@@ -56,6 +56,10 @@ export default function Ticket({ marketKey, mark }: { marketKey: string; mark: b
         ...VAULT,
         functionName: "openPosition",
         args: [market.id, isLong, marginWei, levX10],
+        // openPosition reads the live FTSO feed (_fxrpToUsd6). eth_estimateGas
+        // under-estimates FTSO-reading txs on Flare, causing intermittent
+        // out-of-gas reverts. Pin a generous limit (caller pays only gas used).
+        gas: 3_000_000n,
       });
       await publicClient?.waitForTransactionReceipt({ hash });
       setSent(true);

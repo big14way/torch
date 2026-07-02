@@ -55,6 +55,21 @@ const config: HardhatUserConfig = {
       accounts: PRIVATE_KEY ? [PRIVATE_KEY] : [],
     },
   },
+  etherscan: {
+    // Coston2 uses a Blockscout explorer (Etherscan-compatible API).
+    // Blockscout accepts any non-empty API key string.
+    apiKey: { coston2: "coston2" },
+    customChains: [
+      {
+        network: "coston2",
+        chainId: 114,
+        urls: {
+          apiURL: "https://coston2-explorer.flare.network/api",
+          browserURL: "https://coston2-explorer.flare.network",
+        },
+      },
+    ],
+  },
 };
 
 export default config;

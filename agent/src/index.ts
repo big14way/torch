@@ -25,6 +25,9 @@ const KEY = (process.env.EXECUTOR_PRIVATE_KEY ||
 
 const POLL_MS = 3_000;
 const WALK_MS = 8_000;
+// FTSO-reading vault txs (confirmFill/confirmClose/liquidate) can be
+// under-estimated by eth_estimateGas on Flare; pin a generous gas limit.
+const TX_GAS = 3_000_000n;
 
 // Position status enum mirror of TorchVault.Status
 const S = { None: 0, Requested: 1, Open: 2, CloseRequested: 3, Closed: 4, Liquidated: 5, Cancelled: 6 };
@@ -146,6 +149,7 @@ async function main() {
               ...vault,
               functionName: "confirmFill",
               args: [p.id, fill.price6, fill.oid],
+              gas: TX_GAS,
               chain: null,
             });
             log(p.id, `OPEN  ${key} ${p.isLong ? "long" : "short"} @ ${fmt6(fill.price6)} (${exchange.name}) tx ${hash.slice(0, 10)}`);
@@ -159,6 +163,7 @@ async function main() {
               ...vault,
               functionName: "confirmClose",
               args: [p.id, fill.price6],
+              gas: TX_GAS,
               chain: null,
             });
             log(p.id, `CLOSE ${key} @ ${fmt6(fill.price6)} tx ${hash.slice(0, 10)}`);
@@ -181,6 +186,7 @@ async function main() {
                 ...vault,
                 functionName: "liquidate",
                 args: [p.id, mark],
+                gas: TX_GAS,
                 chain: null,
               });
               log(p.id, `LIQUIDATE ${key} @ ${fmt6(mark)} equity ${fmt6(equity)} tx ${hash.slice(0, 10)}`);
