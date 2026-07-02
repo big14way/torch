@@ -97,6 +97,18 @@ npm run smoke -w contracts
 
 ## Deploy to Coston2 (Flare testnet)
 
+**Live on Coston2 (chain id 114):**
+
+| Contract | Address |
+| --- | --- |
+| TorchVault | [`0x7fC640Bd0e635a6AFc3B437e80f0DE192f6FA0BA`](https://coston2-explorer.flare.network/address/0x7fC640Bd0e635a6AFc3B437e80f0DE192f6FA0BA) |
+| FtsoV2Reader | [`0xe98BEc67F44993c3a9f479500a23f26ca05BcFc5`](https://coston2-explorer.flare.network/address/0xe98BEc67F44993c3a9f479500a23f26ca05BcFc5) |
+| FXRP (FTestXRP) | [`0x0b6A3645c240605887a5532109323A3E12273dc7`](https://coston2-explorer.flare.network/address/0x0b6A3645c240605887a5532109323A3E12273dc7) |
+
+Markets XRP, BTC, ETH are listed at up to 10x, every executor price bounded live by the enshrined FtsoV2 (verified on-chain after deploy: the vault reads real FTSO marks, normalized to 6 decimals).
+
+To reproduce the deployment from scratch:
+
 1. Get C2FLR gas and testnet FXRP from the Coston2 faucet: https://faucet.flare.network
 2. Copy `contracts/.env.example` to `contracts/.env`, set `PRIVATE_KEY` and `FXRP_ADDRESS` (the FXRP token address on Coston2, readable from your faucet tx on the Coston2 explorer).
 3. Resolve the live FtsoV2 address dynamically, never hardcode it:
