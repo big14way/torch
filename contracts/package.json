@@ -1,0 +1,26 @@
+{
+  "name": "@torch/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "chain": "hardhat node",
+    "compile": "hardhat compile",
+    "test": "hardhat test",
+    "build": "hardhat compile",
+    "deploy:local": "hardhat run scripts/deploy.ts --network localhost",
+    "deploy:coston2": "hardhat run scripts/deploy.ts --network coston2",
+    "resolve:ftso": "hardhat run scripts/resolveFtsoV2.ts --network coston2",
+    "smoke": "hardhat run scripts/smoke.ts --network localhost"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "hardhat": "^2.22.10",
+    "solc": "^0.8.24",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.5.4"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "^5.0.2",
+    "dotenv": "^16.4.5"
+  }
+}
