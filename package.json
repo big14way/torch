@@ -1,0 +1,23 @@
+{
+  "name": "torch",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Torch: XRP-margined perps on Flare, executed on Hyperliquid through a TEE-held agent key.",
+  "workspaces": [
+    "contracts",
+    "agent",
+    "web"
+  ],
+  "scripts": {
+    "chain": "npm run chain -w contracts",
+    "deploy:local": "npm run deploy:local -w contracts",
+    "deploy:coston2": "npm run deploy:coston2 -w contracts",
+    "test": "npm run test -w contracts",
+    "agent": "npm run dev -w agent",
+    "web": "npm run dev -w web",
+    "build": "npm run build -w contracts && npm run build -w agent && npm run build -w web"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
