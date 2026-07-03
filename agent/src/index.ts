@@ -130,6 +130,10 @@ async function main() {
   // from placing a second exchange order before the first confirm tx mines
   // (the double-fill race: a re-poll sees the position still Requested).
   const inFlight = new Set<string>();
+  // Positions in a terminal state (closed/cancelled/liquidated). Skipped on
+  // future polls so per-loop RPC load stays proportional to ACTIVE positions,
+  // not the ever-growing total (public RPCs 429 otherwise).
+  const finalized = new Set<string>();
   console.log(`  Watching positions every ${POLL_MS / 1000}s...\n`);
 
   setInterval(async () => {
@@ -140,6 +144,7 @@ async function main() {
       })) as bigint;
 
       for (let i = 0n; i < count; i++) {
+        if (finalized.has(i.toString())) continue; // terminal position; skip the RPC read
         const p = (await pub.readContract({
           ...vault,
           functionName: "getPosition",
@@ -211,7 +216,8 @@ async function main() {
           } catch (e) {
             // NotLiquidatable races are expected; stay quiet unless verbose
           }
-        } else if ((p.status === S.Closed || p.status === S.Liquidated) && !seenClosed.has(p.id.toString())) {
+        } else if (p.status === S.Closed || p.status === S.Liquidated || p.status === S.Cancelled) {
+          finalized.add(i.toString()); // never re-read a terminal position
           seenClosed.add(p.id.toString());
         }
       }
