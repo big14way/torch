@@ -5,6 +5,7 @@ import { DEPLOY, VAULT } from "../lib/config";
 import { fmtFxrp, fmtPx, useFreeMargin, useXrpPrice } from "../lib/hooks";
 
 const MAINTENANCE = 0.05; // mirrors maintenanceMarginBps = 500
+const MIN_NOTIONAL_USD = 10; // Hyperliquid rejects orders under ~$10 notional
 
 export default function Ticket({ marketKey, mark }: { marketKey: string; mark: bigint | undefined }) {
   const { address, isConnected } = useAccount();
@@ -47,6 +48,7 @@ export default function Ticket({ marketKey, mark }: { marketKey: string; mark: b
   }, [marginStr]);
 
   const insufficient = free !== undefined && marginWei > free;
+  const belowMin = est.sizeUsd > 0 && est.sizeUsd < MIN_NOTIONAL_USD;
 
   const submit = async () => {
     setError(null);
@@ -129,6 +131,12 @@ export default function Ticket({ marketKey, mark }: { marketKey: string; mark: b
           <span>Position size</span>
           <b>${est.sizeUsd.toLocaleString("en-US", { maximumFractionDigits: 2 })}</b>
         </div>
+        {belowMin && (
+          <div className="row" style={{ color: "#ff5470" }}>
+            <span>Minimum order</span>
+            <b>${MIN_NOTIONAL_USD}, raise margin or leverage</b>
+          </div>
+        )}
         <div className="row">
           <span>Margin value</span>
           <b>${est.marginUsd.toLocaleString("en-US", { maximumFractionDigits: 2 })}</b>
@@ -151,16 +159,18 @@ export default function Ticket({ marketKey, mark }: { marketKey: string; mark: b
         <button
           className={`btn ${isLong ? "long" : "short"}`}
           style={{ width: "100%", padding: "12px" }}
-          disabled={!isConnected || isPending || marginWei === 0n || insufficient}
+          disabled={!isConnected || isPending || marginWei === 0n || insufficient || belowMin}
           onClick={submit}
         >
           {!isConnected
             ? "Connect wallet first"
             : insufficient
               ? "Deposit margin first"
-              : isPending
-                ? "Confirm in wallet..."
-                : `${isLong ? "Long" : "Short"} ${marketKey} at ${mark ? `$${fmtPx(mark)}` : "..."}`}
+              : belowMin
+                ? `Below $${MIN_NOTIONAL_USD} exchange minimum`
+                : isPending
+                  ? "Confirm in wallet..."
+                  : `${isLong ? "Long" : "Short"} ${marketKey} at ${mark ? `$${fmtPx(mark)}` : "..."}`}
         </button>
       </div>
 
