@@ -7,21 +7,27 @@ import {
   type Address,
   hexToString,
 } from "viem";
-import { privateKeyToAccount } from "viem/accounts";
+import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import deployments from "./generated/deployments.json" with { type: "json" };
 import vaultAbiJson from "./generated/TorchVault.abi.json" with { type: "json" };
 import oracleAbiJson from "./generated/MockFtsoV2.abi.json" with { type: "json" };
 import { MockExchange, HyperliquidTestnet, type Exchange } from "./exchange.js";
-import { getAttestation } from "./tee.js";
+import { getAttestation, inConfidentialSpace } from "./tee.js";
 
 const vaultAbi = vaultAbiJson as Abi;
 const oracleAbi = oracleAbiJson as Abi;
 
 const RPC_URL = process.env.RPC_URL || "http://127.0.0.1:8545";
 const MODE = (process.env.EXECUTION_MODE || "mock") as "mock" | "testnet";
-const KEY = (process.env.EXECUTOR_PRIVATE_KEY ||
-  // Hardhat account #1: public dev key, never holds value
-  "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d") as `0x${string}`;
+// Executor key. In Confidential Space with no key supplied, GENERATE it inside
+// the enclave so the private key never exists outside the attested image; the
+// operator then points the vault at its address via setExecutor().
+const KEY: `0x${string}` =
+  (process.env.EXECUTOR_PRIVATE_KEY as `0x${string}`) ||
+  (inConfidentialSpace()
+    ? generatePrivateKey()
+    : // Hardhat account #1: public dev key, never holds value
+      ("0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d" as `0x${string}`));
 
 const POLL_MS = 3_000;
 const WALK_MS = 8_000;
@@ -54,7 +60,7 @@ async function main() {
   const wallet = createWalletClient({ account, transport: http(RPC_URL) });
   const chainId = await pub.getChainId();
 
-  const att = getAttestation();
+  const att = await getAttestation();
   console.log("");
   console.log("  TORCH executor agent");
   console.log(`  chain      ${chainId} (${deployments.network})`);
@@ -62,6 +68,11 @@ async function main() {
   console.log(`  executor   ${account.address}`);
   console.log(`  mode       ${MODE}`);
   console.log(`  tee        ${att.mode} :: ${att.note}`);
+  if (att.mode === "confidential-space") {
+    console.log(`  digest     ${att.imageDigest ?? "unknown"}`);
+    console.log(`  >> point the vault here: setExecutor(${account.address})`);
+    if (att.token) console.log(`  attestation token (publish this):\n${att.token}`);
+  }
   console.log("");
 
   if (account.address.toLowerCase() !== deployments.executor.toLowerCase()) {

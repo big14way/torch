@@ -10,6 +10,7 @@
     "deploy:local": "hardhat run scripts/deploy.ts --network localhost",
     "deploy:coston2": "hardhat run scripts/deploy.ts --network coston2",
     "resolve:ftso": "hardhat run scripts/resolveFtsoV2.ts --network coston2",
+    "set:executor": "hardhat run scripts/setExecutor.ts --network coston2",
     "smoke": "hardhat run scripts/smoke.ts --network localhost"
   },
   "devDependencies": {
