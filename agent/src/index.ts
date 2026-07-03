@@ -126,6 +126,10 @@ async function main() {
 
   // ---- main settlement loop ------------------------------------------------
   const seenClosed = new Set<string>();
+  // Positions with a fill/close currently in flight. Prevents the poll loop
+  // from placing a second exchange order before the first confirm tx mines
+  // (the double-fill race: a re-poll sees the position still Requested).
+  const inFlight = new Set<string>();
   console.log(`  Watching positions every ${POLL_MS / 1000}s...\n`);
 
   setInterval(async () => {
@@ -144,6 +148,9 @@ async function main() {
         const key = markKey(p.market);
 
         if (p.status === S.Requested) {
+          const idStr = p.id.toString();
+          if (inFlight.has(idStr)) continue; // fill already in flight; don't double-order
+          inFlight.add(idStr);
           try {
             const fill = await exchange.open(key, p.isLong, p.sizeUsd6);
             const hash = await wallet.writeContract({
@@ -153,11 +160,17 @@ async function main() {
               gas: TX_GAS,
               chain: null,
             });
+            await pub.waitForTransactionReceipt({ hash }); // hold the lock until it mines
             log(p.id, `OPEN  ${key} ${p.isLong ? "long" : "short"} @ ${fmt6(fill.price6)} (${fill.venue ?? exchange.name}) tx ${hash.slice(0, 10)}`);
           } catch (e) {
             log(p.id, `open failed: ${(e as Error).message}`);
+          } finally {
+            inFlight.delete(idStr);
           }
         } else if (p.status === S.CloseRequested) {
+          const idStr = p.id.toString();
+          if (inFlight.has(idStr)) continue; // close already in flight
+          inFlight.add(idStr);
           try {
             const fill = await exchange.close(key, p.isLong, p.sizeUsd6);
             const hash = await wallet.writeContract({
@@ -167,9 +180,12 @@ async function main() {
               gas: TX_GAS,
               chain: null,
             });
+            await pub.waitForTransactionReceipt({ hash });
             log(p.id, `CLOSE ${key} @ ${fmt6(fill.price6)} (${fill.venue ?? exchange.name}) tx ${hash.slice(0, 10)}`);
           } catch (e) {
             log(p.id, `close failed: ${(e as Error).message}`);
+          } finally {
+            inFlight.delete(idStr);
           }
         } else if (p.status === S.Open) {
           // Liquidation watch: replicate the contract check off-chain, then
