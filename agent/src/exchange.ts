@@ -20,6 +20,7 @@
 export interface Fill {
   price6: bigint; // asset USD price, 6 decimals
   oid: bigint; // exchange order id (0 in mock)
+  venue?: string; // where it actually filled, for honest logging
 }
 
 export interface Exchange {
@@ -58,7 +59,10 @@ export class HyperliquidTestnet implements Exchange {
 
   constructor(
     private apiUrl: string,
-    private privateKey: string
+    private privateKey: string,
+    // Fallback mark for symbols HL testnet does not list (e.g. XRP): fill at
+    // the on-chain FTSO mark instead of erroring, so those markets stay usable.
+    private markFallback?: (market: string) => Promise<bigint>
   ) {}
 
   private async client(): Promise<any> {
@@ -103,76 +107,95 @@ export class HyperliquidTestnet implements Exchange {
   }
 
   async open(market: string, isLong: boolean, sizeUsd6: bigint): Promise<Fill> {
+    const meta = await this.assetMeta(HL_COIN[market]);
+    if (!meta) return this.fallbackFill(market); // e.g. XRP: not listed on HL testnet
+    this.requireMinNotional(sizeUsd6);
     const client = await this.client();
     const mid6 = await this.mid6(market);
-    const coin = HL_COIN[market];
-    // size in asset units = notionalUsd / price
-    const sz = Number(sizeUsd6) / Number(mid6);
-    // Market order via aggressive IOC limit (Hyperliquid convention). The SDK
-    // handles asset indices and signing. VERIFY: tick/lot rounding per asset.
+    // lot size = notionalUsd / price, rounded to the asset's szDecimals
+    const sz = (Number(sizeUsd6) / Number(mid6)).toFixed(meta.szDecimals);
     const result = await client.order({
       orders: [
         {
-          a: await this.assetIndex(coin),
+          a: meta.index,
           b: isLong,
           p: this.slippagePx(mid6, isLong),
-          s: sz.toFixed(4),
+          s: sz,
           r: false,
           t: { limit: { tif: "Ioc" } },
         },
       ],
       grouping: "na",
     });
-    const status = result?.response?.data?.statuses?.[0];
-    const filled = status?.filled;
-    if (!filled) throw new Error(`HL open not filled: ${JSON.stringify(status)}`);
-    return {
-      price6: BigInt(Math.round(parseFloat(filled.avgPx) * 1e6)),
-      oid: BigInt(filled.oid ?? 0),
-    };
+    return this.readFill(result, "open");
   }
 
   async close(market: string, isLong: boolean, sizeUsd6: bigint): Promise<Fill> {
-    // Closing = opposite side, reduce-only.
+    const meta = await this.assetMeta(HL_COIN[market]);
+    if (!meta) return this.fallbackFill(market);
+    this.requireMinNotional(sizeUsd6);
     const client = await this.client();
     const mid6 = await this.mid6(market);
-    const coin = HL_COIN[market];
-    const sz = Number(sizeUsd6) / Number(mid6);
+    const sz = (Number(sizeUsd6) / Number(mid6)).toFixed(meta.szDecimals);
     const result = await client.order({
       orders: [
         {
-          a: await this.assetIndex(coin),
-          b: !isLong,
+          a: meta.index,
+          b: !isLong, // closing = opposite side
           p: this.slippagePx(mid6, !isLong),
-          s: sz.toFixed(4),
-          r: true,
+          s: sz,
+          r: true, // reduce-only
           t: { limit: { tif: "Ioc" } },
         },
       ],
       grouping: "na",
     });
+    return this.readFill(result, "close");
+  }
+
+  // HL rejects orders below ~$10 notional.
+  private static readonly MIN_NOTIONAL_USD6 = 10_000_000n;
+
+  private requireMinNotional(sizeUsd6: bigint): void {
+    if (sizeUsd6 < HyperliquidTestnet.MIN_NOTIONAL_USD6) {
+      throw new Error(
+        `HL min order is ~$10; this position is $${(Number(sizeUsd6) / 1e6).toFixed(2)}. Raise margin or leverage.`
+      );
+    }
+  }
+
+  private async fallbackFill(market: string): Promise<Fill> {
+    if (!this.markFallback) {
+      throw new Error(`${HL_COIN[market]} is not on HL testnet and no FTSO fallback was provided`);
+    }
+    return { price6: await this.markFallback(market), oid: 0n, venue: "ftso-mark (not on HL testnet)" };
+  }
+
+  private readFill(result: any, kind: string): Fill {
     const status = result?.response?.data?.statuses?.[0];
     const filled = status?.filled;
-    if (!filled) throw new Error(`HL close not filled: ${JSON.stringify(status)}`);
+    if (!filled) throw new Error(`HL ${kind} not filled: ${JSON.stringify(status)}`);
     return {
       price6: BigInt(Math.round(parseFloat(filled.avgPx) * 1e6)),
       oid: BigInt(filled.oid ?? 0),
+      venue: "hyperliquid-testnet",
     };
   }
 
-  private assetCache: Record<string, number> = {};
-  private async assetIndex(coin: string): Promise<number> {
-    if (coin in this.assetCache) return this.assetCache[coin];
+  private metaCache: Record<string, { index: number; szDecimals: number } | null> = {};
+  /** Resolve an asset's HL index + szDecimals, or null if HL does not list it. */
+  private async assetMeta(coin: string): Promise<{ index: number; szDecimals: number } | null> {
+    if (coin in this.metaCache) return this.metaCache[coin];
     const res = await fetch(`${this.apiUrl}/info`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ type: "meta" }),
     });
-    const meta = (await res.json()) as { universe: { name: string }[] };
+    const meta = (await res.json()) as { universe: { name: string; szDecimals: number }[] };
     const idx = meta.universe.findIndex((u) => u.name === coin);
-    if (idx < 0) throw new Error(`Asset ${coin} not in HL universe`);
-    this.assetCache[coin] = idx;
-    return idx;
+    const found = idx < 0 ? null : { index: idx, szDecimals: meta.universe[idx].szDecimals };
+    this.metaCache[coin] = found;
+    return found;
   }
 
   /** Aggressive price with 1% slippage room, formatted as HL expects. */

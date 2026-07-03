@@ -89,7 +89,8 @@ async function main() {
   if (MODE === "testnet") {
     exchange = new HyperliquidTestnet(
       process.env.HL_API_URL || "https://api.hyperliquid-testnet.xyz",
-      process.env.HL_PRIVATE_KEY || ""
+      process.env.HL_PRIVATE_KEY || "",
+      markPrice6 // FTSO-mark fallback for symbols HL testnet does not list (e.g. XRP)
     );
     console.log("  Routing orders to Hyperliquid testnet. Smoke-test before demos.");
   } else {
@@ -152,7 +153,7 @@ async function main() {
               gas: TX_GAS,
               chain: null,
             });
-            log(p.id, `OPEN  ${key} ${p.isLong ? "long" : "short"} @ ${fmt6(fill.price6)} (${exchange.name}) tx ${hash.slice(0, 10)}`);
+            log(p.id, `OPEN  ${key} ${p.isLong ? "long" : "short"} @ ${fmt6(fill.price6)} (${fill.venue ?? exchange.name}) tx ${hash.slice(0, 10)}`);
           } catch (e) {
             log(p.id, `open failed: ${(e as Error).message}`);
           }
@@ -166,7 +167,7 @@ async function main() {
               gas: TX_GAS,
               chain: null,
             });
-            log(p.id, `CLOSE ${key} @ ${fmt6(fill.price6)} tx ${hash.slice(0, 10)}`);
+            log(p.id, `CLOSE ${key} @ ${fmt6(fill.price6)} (${fill.venue ?? exchange.name}) tx ${hash.slice(0, 10)}`);
           } catch (e) {
             log(p.id, `close failed: ${(e as Error).message}`);
           }
