@@ -12,7 +12,7 @@
     "viem": "^2.21.0"
   },
   "optionalDependencies": {
-    "@nktkas/hyperliquid": "^0.15.0"
+    "@nktkas/hyperliquid": "^0.15.4"
   },
   "devDependencies": {
     "@types/node": "^22.5.0",
