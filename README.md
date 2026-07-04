@@ -104,6 +104,7 @@ npm run smoke -w contracts
 | TorchVault | [`0x7fC640Bd0e635a6AFc3B437e80f0DE192f6FA0BA`](https://coston2-explorer.flare.network/address/0x7fC640Bd0e635a6AFc3B437e80f0DE192f6FA0BA) |
 | FtsoV2Reader | [`0xe98BEc67F44993c3a9f479500a23f26ca05BcFc5`](https://coston2-explorer.flare.network/address/0xe98BEc67F44993c3a9f479500a23f26ca05BcFc5) |
 | FXRP (FTestXRP) | [`0x0b6A3645c240605887a5532109323A3E12273dc7`](https://coston2-explorer.flare.network/address/0x0b6A3645c240605887a5532109323A3E12273dc7) |
+| TorchFdcConsumer | [`0x2700E6f99dBe91283aC17bB0D03a5E34Da484451`](https://coston2-explorer.flare.network/address/0x2700E6f99dBe91283aC17bB0D03a5E34Da484451) |
 
 Markets XRP, BTC, ETH are listed at up to 10x, every executor price bounded live by the enshrined FtsoV2 (verified on-chain after deploy: the vault reads real FTSO marks, normalized to 6 decimals).
 
@@ -115,6 +116,13 @@ The executor key is generated *inside* a hardware TEE (Phala Cloud, Intel TDX) a
 - App id `cc1525a5ca15c4c8ef2668e72bc888f5a0c3239a`, compose hash `3b1e6ed0f43a59df4b0a2028701106c24a4363f680b92be7bdf851b9c9bac332`, aggregated measurement `b33eb22ae8eed320d1ded19532519296c2d60931b5d9f64e5de34a5b9a70e800` (bound by TDX).
 
 In this deployment the enclave fills at the FTSO mark; the live Hyperliquid hop (proven separately on testnet) routes when the TEE is granted outbound access to the exchange. Migration target: Flare Protocol Managed Wallets when FCC ships on Songbird.
+
+**FDC Web2Json fill attestation (the path off trusted reports):**
+
+The roadmap's endgame is that a fill is not believed because our executor reported it, but because Flare's own validators re-fetched Hyperliquid and agreed. `TorchFdcConsumer` verifies a Flare Data Connector Web2Json proof on-chain and records the fill — anyone can reproduce it with `npm run fdc:attest -w contracts`. The flow: prepare the request at the FDC verifier, submit to `FdcHub`, wait the voting round, pull the Merkle proof from the DA layer, then `attestFill` verifies it through `ContractRegistry.getFdcVerification()` and decodes the fill.
+
+- Live attested fill (BTC, oid `55912796181`, from wallet F's Hyperliquid testnet history): verify tx [`0xb99c88ac…dcf1d08f`](https://coston2-explorer.flare.network/tx/0xb99c88ac5b9c9e165b51cd247579227959325ba37e149a61ea556459dcf1d08f)
+- Kept out of the hot path on purpose: a round trip is ~2 min plus a fee, so requiring an inline proof on every `confirmFill` would stall the live loop. The consumer stands as the verifiable settlement path, not a per-fill tax.
 
 To reproduce the deployment from scratch:
 
