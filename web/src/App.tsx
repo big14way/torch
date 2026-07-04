@@ -9,6 +9,7 @@ import AccountPanel from "./components/AccountPanel";
 import Positions from "./components/Positions";
 import RouteTrace from "./components/RouteTrace";
 import HowItWorks from "./components/HowItWorks";
+import Stats from "./components/Stats";
 
 export default function App() {
   const [marketKey, setMarketKey] = useState<string>(DEPLOY.markets[0]?.key ?? "XRP");
@@ -22,6 +23,8 @@ export default function App() {
   return (
     <div className="app">
       <Header marketKey={marketKey} mark={mark as bigint | undefined} onHow={() => setShowHow(true)} />
+
+      <Stats />
 
       <div className="grid">
         <div className="area-chart card">
