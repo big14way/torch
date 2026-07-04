@@ -12,7 +12,7 @@ import deployments from "./generated/deployments.json" with { type: "json" };
 import vaultAbiJson from "./generated/TorchVault.abi.json" with { type: "json" };
 import oracleAbiJson from "./generated/MockFtsoV2.abi.json" with { type: "json" };
 import { MockExchange, HyperliquidTestnet, type Exchange } from "./exchange.js";
-import { getAttestation, inConfidentialSpace } from "./tee.js";
+import { getAttestation, inEnclave } from "./tee.js";
 
 const vaultAbi = vaultAbiJson as Abi;
 const oracleAbi = oracleAbiJson as Abi;
@@ -24,7 +24,7 @@ const MODE = (process.env.EXECUTION_MODE || "mock") as "mock" | "testnet";
 // operator then points the vault at its address via setExecutor().
 const KEY: `0x${string}` =
   (process.env.EXECUTOR_PRIVATE_KEY as `0x${string}`) ||
-  (inConfidentialSpace()
+  (inEnclave()
     ? generatePrivateKey()
     : // Hardhat account #1: public dev key, never holds value
       ("0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d" as `0x${string}`));
@@ -68,7 +68,7 @@ async function main() {
   console.log(`  executor   ${account.address}`);
   console.log(`  mode       ${MODE}`);
   console.log(`  tee        ${att.mode} :: ${att.note}`);
-  if (att.mode === "confidential-space") {
+  if (att.mode !== "dev") {
     console.log(`  digest     ${att.imageDigest ?? "unknown"}`);
     console.log(`  >> point the vault here: setExecutor(${account.address})`);
     if (att.token) console.log(`  attestation token (publish this):\n${att.token}`);

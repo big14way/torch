@@ -1,0 +1,18 @@
+# Torch executor on Phala Cloud (Intel TDX enclave via dstack).
+# Paste into Phala Cloud -> Deploy -> docker-compose.yml.
+#
+# The executor key is GENERATED INSIDE the enclave (no key in this file).
+# Set HL_PRIVATE_KEY as a Phala "Encrypted Secret" (end-to-end encrypted); it is
+# referenced below. Read the CVM serial log for the executor address, then run
+# `EXECUTOR_NEW=0x... npm run set:executor -w contracts` to authorize it.
+services:
+  executor:
+    image: ghcr.io/big14way/torch-executor:latest
+    restart: unless-stopped
+    environment:
+      ENCLAVE_KEYGEN: "1"
+      DSTACK: "1"
+      EXECUTION_MODE: testnet
+      RPC_URL: https://coston2-api.flare.network/ext/C/rpc
+      HL_API_URL: https://api.hyperliquid-testnet.xyz
+      HL_PRIVATE_KEY: ${HL_PRIVATE_KEY}

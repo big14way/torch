@@ -1,48 +1,48 @@
 /**
- * TEE attestation surface.
+ * TEE attestation surface. Two real backends plus dev mode:
+ *   - Google Confidential Space (teeserver socket, vTPM OIDC token)
+ *   - Phala Cloud / dstack (Intel TDX; RA report binds image + compose hash)
  *
- * Dev mode (local): no enclave, the executor key comes from .env.
- *
- * Production: the agent runs inside Google Cloud Confidential Space (the stack
- * Flare used for the Verifiable AI hackathon and the stack FCC Protocol Managed
- * Wallets launch on), where:
- *
- *  1. The executor key is GENERATED inside the enclave and never exported
- *     (see index.ts: no EXECUTOR_PRIVATE_KEY -> generatePrivateKey() in-enclave).
- *  2. The launcher serves a vTPM attestation token binding the running container
- *     IMAGE DIGEST to the workload, fetched below over the local unix socket.
- *  3. That token + digest are published so anyone can verify the exact code
- *     controlling the executor role.
- *
- * Migration path: when Flare Confidential Compute ships Protocol Managed Wallets
- * on Songbird, the executor role moves from this single app-run TEE to the
- * protocol's quorum of TEEs. The vault contract does not change.
+ * In any enclave the executor key is GENERATED inside the TEE and never
+ * exported (see index.ts). The operator then points the vault at its address
+ * via setExecutor(). Migration path unchanged: the role moves to Flare Protocol
+ * Managed Wallets when FCC ships on Songbird; the vault contract does not change.
  */
 import http from "node:http";
 import { existsSync } from "node:fs";
 
-// Confidential Space launcher exposes the token server on this unix socket.
-const TEE_SOCKET = "/run/container_launcher/teeserver.sock";
+const CS_SOCKET = "/run/container_launcher/teeserver.sock"; // Confidential Space
+const DSTACK_SOCKET = "/var/run/dstack.sock"; // Phala Cloud / dstack
 
 export interface AttestationInfo {
-  mode: "dev" | "confidential-space";
+  mode: "dev" | "confidential-space" | "dstack";
   imageDigest?: string;
   token?: string;
   note: string;
 }
 
-/** True when running inside a Confidential Space workload. */
+/** Running inside a Google Confidential Space workload. */
 export function inConfidentialSpace(): boolean {
-  return process.env.CONFIDENTIAL_SPACE === "1" || existsSync(TEE_SOCKET);
+  return process.env.CONFIDENTIAL_SPACE === "1" || existsSync(CS_SOCKET);
 }
 
-/** Fetch an attestation token (OIDC JWT) from the launcher's token server. */
+/** Running inside a Phala Cloud / dstack (Intel TDX) enclave. */
+export function inDstack(): boolean {
+  return process.env.DSTACK === "1" || existsSync(DSTACK_SOCKET);
+}
+
+/** Any TEE: the agent should generate its executor key in-enclave. */
+export function inEnclave(): boolean {
+  return inConfidentialSpace() || inDstack() || process.env.ENCLAVE_KEYGEN === "1";
+}
+
+/** Fetch a Confidential Space attestation token (OIDC JWT) from the launcher. */
 export function fetchAttestationToken(audience = "torch-executor", nonces: string[] = []): Promise<string> {
   const body = JSON.stringify({ audience, nonces, token_type: "OIDC" });
   return new Promise((resolve, reject) => {
     const req = http.request(
       {
-        socketPath: TEE_SOCKET,
+        socketPath: CS_SOCKET,
         path: "/v1/token",
         method: "POST",
         headers: { "content-type": "application/json", "content-length": Buffer.byteLength(body) },
@@ -72,24 +72,30 @@ function decodeJwtPayload(jwt: string): Record<string, any> | null {
 }
 
 export async function getAttestation(): Promise<AttestationInfo> {
-  if (!inConfidentialSpace()) {
-    return { mode: "dev", note: "Dev mode: no enclave. Executor key loaded from .env for local testing." };
+  if (inConfidentialSpace()) {
+    try {
+      const token = await fetchAttestationToken();
+      const digest = decodeJwtPayload(token)?.submods?.container?.image_digest ?? process.env.IMAGE_DIGEST;
+      return {
+        mode: "confidential-space",
+        imageDigest: digest,
+        token,
+        note: `Confidential Space attestation live. Image digest ${digest ?? "unknown"}, bound by Google vTPM.`,
+      };
+    } catch (e) {
+      return {
+        mode: "confidential-space",
+        imageDigest: process.env.IMAGE_DIGEST,
+        note: `Confidential Space env, attestation fetch failed: ${(e as Error).message}`,
+      };
+    }
   }
-  try {
-    const token = await fetchAttestationToken();
-    const claims = decodeJwtPayload(token);
-    const digest = claims?.submods?.container?.image_digest ?? process.env.IMAGE_DIGEST;
+  if (inDstack() || process.env.ENCLAVE_KEYGEN === "1") {
     return {
-      mode: "confidential-space",
-      imageDigest: digest,
-      token,
-      note: `Confidential Space attestation live. Image digest ${digest ?? "unknown"}, bound by Google vTPM.`,
-    };
-  } catch (e) {
-    return {
-      mode: "confidential-space",
+      mode: "dstack",
       imageDigest: process.env.IMAGE_DIGEST,
-      note: `Confidential Space env, but attestation fetch failed: ${(e as Error).message}`,
+      note: "Phala Cloud / dstack (Intel TDX) enclave. RA report binds the image + compose hash; verify at the CVM's attestation page.",
     };
   }
+  return { mode: "dev", note: "Dev mode: no enclave. Executor key loaded from .env for local testing." };
 }
