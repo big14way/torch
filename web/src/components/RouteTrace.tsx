@@ -53,9 +53,20 @@ export default function RouteTrace({ positions }: { positions: Position[] | unde
       <div className="caption">{caption}</div>
       <div className="tee-badge">
         <span aria-hidden="true">◈</span>
-        {DEPLOY.mode === "local"
-          ? "TEE: dev mode, local run, unattested"
-          : "TEE: dev mode on Coston2. Confidential Space attestation on the roadmap."}
+        {DEPLOY.mode === "local" ? (
+          "TEE: dev mode, local run, unattested"
+        ) : (
+          <>
+            TEE: executor key sealed in a Phala TDX enclave, attested.{" "}
+            <a
+              href="https://cc1525a5ca15c4c8ef2668e72bc888f5a0c3239a.dstack-pha-prod9.phala.network"
+              target="_blank"
+              rel="noreferrer"
+            >
+              verify
+            </a>
+          </>
+        )}
       </div>
     </div>
   );

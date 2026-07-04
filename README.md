@@ -107,6 +107,15 @@ npm run smoke -w contracts
 
 Markets XRP, BTC, ETH are listed at up to 10x, every executor price bounded live by the enshrined FtsoV2 (verified on-chain after deploy: the vault reads real FTSO marks, normalized to 6 decimals).
 
+**Confidential executor (Phala TDX enclave, attested):**
+
+The executor key is generated *inside* a hardware TEE (Phala Cloud, Intel TDX) and never leaves it. The running image and its config are bound by a remote-attestation report, and the enclave signs `confirmFill` from a key no operator has ever seen. The vault's `executor` was pointed at the enclave-generated address via `setExecutor` (owner-only, no redeploy).
+
+- Live status endpoint (returns the current executor address + attestation mode): https://cc1525a5ca15c4c8ef2668e72bc888f5a0c3239a.dstack-pha-prod9.phala.network
+- App id `cc1525a5ca15c4c8ef2668e72bc888f5a0c3239a`, compose hash `3b1e6ed0f43a59df4b0a2028701106c24a4363f680b92be7bdf851b9c9bac332`, aggregated measurement `b33eb22ae8eed320d1ded19532519296c2d60931b5d9f64e5de34a5b9a70e800` (bound by TDX).
+
+In this deployment the enclave fills at the FTSO mark; the live Hyperliquid hop (proven separately on testnet) routes when the TEE is granted outbound access to the exchange. Migration target: Flare Protocol Managed Wallets when FCC ships on Songbird.
+
 To reproduce the deployment from scratch:
 
 1. Get C2FLR gas and testnet FXRP from the Coston2 faucet: https://faucet.flare.network
