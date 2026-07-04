@@ -18,11 +18,11 @@ export default function RouteTrace({ positions }: { positions: Position[] | unde
   const caption = !latest
     ? "Open a position and watch it travel."
     : latest.status === 1
-      ? "Margin locked on Flare. The TEE agent is placing the order on Hyperliquid."
+      ? "Margin locked on Flare. The TEE agent is placing the fill."
       : latest.status === 3
-        ? "Close requested. The TEE agent is unwinding on Hyperliquid."
+        ? "Close requested. The TEE agent is unwinding the position."
         : latest.status === 2
-          ? "Filled on Hyperliquid. Settlement will come back through the FTSO price band."
+          ? "Filled inside the FTSO price band, settling back on Flare."
           : latest.status === 5
             ? "Position liquidated below maintenance margin. Settled on Flare."
             : "Round trip complete. Margin settled back on Flare.";
