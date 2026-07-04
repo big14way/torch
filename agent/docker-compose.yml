@@ -9,7 +9,10 @@ services:
   executor:
     image: ghcr.io/big14way/torch-executor:latest
     restart: unless-stopped
+    ports:
+      - "80:3000"
     environment:
+      PORT: "3000"
       ENCLAVE_KEYGEN: "1"
       DSTACK: "1"
       EXECUTION_MODE: testnet

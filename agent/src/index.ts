@@ -13,6 +13,7 @@ import vaultAbiJson from "./generated/TorchVault.abi.json" with { type: "json" }
 import oracleAbiJson from "./generated/MockFtsoV2.abi.json" with { type: "json" };
 import { MockExchange, HyperliquidTestnet, type Exchange } from "./exchange.js";
 import { getAttestation, inEnclave } from "./tee.js";
+import http from "node:http";
 
 const vaultAbi = vaultAbiJson as Abi;
 const oracleAbi = oracleAbiJson as Abi;
@@ -74,6 +75,32 @@ async function main() {
     if (att.token) console.log(`  attestation token (publish this):\n${att.token}`);
   }
   console.log("");
+
+  // Status endpoint: exposes the enclave-generated executor address + attestation
+  // so it can be read/verified without container-log access (served via the gateway).
+  const STATUS_PORT = Number(process.env.PORT || 0);
+  if (STATUS_PORT > 0) {
+    http
+      .createServer((_req, res) => {
+        res.setHeader("content-type", "application/json");
+        res.setHeader("access-control-allow-origin", "*");
+        res.end(
+          JSON.stringify(
+            {
+              service: "torch-executor",
+              chainId,
+              vault: deployments.vault,
+              executor: account.address,
+              executionMode: MODE,
+              tee: { mode: att.mode, imageDigest: att.imageDigest ?? null },
+            },
+            null,
+            2
+          )
+        );
+      })
+      .listen(STATUS_PORT, () => console.log(`  status     serving on :${STATUS_PORT}`));
+  }
 
   if (account.address.toLowerCase() !== deployments.executor.toLowerCase()) {
     console.warn(
