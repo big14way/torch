@@ -15,7 +15,7 @@ export default function Ticket({ marketKey, mark }: { marketKey: string; mark: b
   const publicClient = usePublicClient();
 
   const [isLong, setIsLong] = useState(true);
-  const [marginStr, setMarginStr] = useState("100");
+  const [marginStr, setMarginStr] = useState("50");
   const [levX10, setLevX10] = useState(30); // 3x default
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
@@ -49,6 +49,9 @@ export default function Ticket({ marketKey, mark }: { marketKey: string; mark: b
 
   const insufficient = free !== undefined && marginWei > free;
   const belowMin = est.sizeUsd > 0 && est.sizeUsd < MIN_NOTIONAL_USD;
+  // Connected but nothing deposited yet: the #1 reason a first-time user can't
+  // trade. Positions draw on *deposited* margin, not the wallet balance.
+  const needsDeposit = isConnected && free !== undefined && free === 0n;
 
   const submit = async () => {
     setError(null);
@@ -74,6 +77,17 @@ export default function Ticket({ marketKey, mark }: { marketKey: string; mark: b
   return (
     <div className="card">
       <h2>New position</h2>
+
+      {needsDeposit && (
+        <div className="deposit-hint">
+          <b>Deposit margin to start.</b> Positions trade on FXRP you've deposited into the vault,
+          not your wallet balance. Need FXRP?{" "}
+          <a href="https://faucet.flare.network" target="_blank" rel="noreferrer">
+            Claim C2FLR + FTestXRP
+          </a>{" "}
+          (free), then <b>Deposit</b> in the Account panel{DEPLOY.mode === "coston2" ? " below" : ""}.
+        </div>
+      )}
 
       <div className="sideswitch" role="radiogroup" aria-label="Direction">
         <button className={`long ${isLong ? "on" : ""}`} onClick={() => setIsLong(true)}>
@@ -164,13 +178,15 @@ export default function Ticket({ marketKey, mark }: { marketKey: string; mark: b
         >
           {!isConnected
             ? "Connect wallet first"
-            : insufficient
+            : needsDeposit
               ? "Deposit margin first"
-              : belowMin
-                ? `Below $${MIN_NOTIONAL_USD} exchange minimum`
-                : isPending
-                  ? "Confirm in wallet..."
-                  : `${isLong ? "Long" : "Short"} ${marketKey} at ${mark ? `$${fmtPx(mark)}` : "..."}`}
+              : insufficient
+                ? `Not enough margin — ${free !== undefined ? fmtFxrp(free) : "0"} free`
+                : belowMin
+                  ? `Below $${MIN_NOTIONAL_USD} exchange minimum`
+                  : isPending
+                    ? "Confirm in wallet..."
+                    : `${isLong ? "Long" : "Short"} ${marketKey} at ${mark ? `$${fmtPx(mark)}` : "..."}`}
         </button>
       </div>
 
