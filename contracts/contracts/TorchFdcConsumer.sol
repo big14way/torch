@@ -60,9 +60,24 @@ contract TorchFdcConsumer {
     /// ...queried for the Torch executor account's fills...
     string public constant EXPECTED_BODY =
         "{\"type\":\"userFills\",\"user\":\"0xfDb941fe97e13B599BC576c4142128aB97D01622\"}";
-    /// ...transformed by exactly this JQ (latest fill; userFills is newest-first).
+    /// ...transformed by exactly this JQ (latest fill; userFills is newest-first)...
     string public constant EXPECTED_JQ =
         "{coin: .[0].coin, side: .[0].dir, px: .[0].px, sz: .[0].sz, oid: .[0].oid, time: .[0].time}";
+    /// ...with every remaining request degree of freedom pinned too. The
+    /// abiSignature matters as much as the JQ: the verifier encodes the JQ
+    /// output by matching JSON keys to these component names, so an attacker
+    /// who reorders components gets fields transposed in abi.decode.
+    string public constant EXPECTED_METHOD = "POST";
+    string public constant EXPECTED_HEADERS = "{\"Content-Type\":\"application/json\"}";
+    string public constant EXPECTED_QUERY = "{}";
+    string public constant EXPECTED_ABI_SIG =
+        "{\"components\":[{\"internalType\":\"string\",\"name\":\"coin\",\"type\":\"string\"},"
+        "{\"internalType\":\"string\",\"name\":\"side\",\"type\":\"string\"},"
+        "{\"internalType\":\"string\",\"name\":\"px\",\"type\":\"string\"},"
+        "{\"internalType\":\"string\",\"name\":\"sz\",\"type\":\"string\"},"
+        "{\"internalType\":\"uint256\",\"name\":\"oid\",\"type\":\"uint256\"},"
+        "{\"internalType\":\"uint256\",\"name\":\"time\",\"type\":\"uint256\"}],"
+        "\"name\":\"task\",\"type\":\"tuple\"}";
 
     ITorchVault public immutable vault;
 
@@ -72,6 +87,8 @@ contract TorchFdcConsumer {
     mapping(uint256 => bool) public attestedOids;
     /// positionId => the Hyperliquid oid proven for it (0 = not attested)
     mapping(uint256 => uint256) public positionAttestedOid;
+    /// each exchange fill can back at most one position
+    mapping(uint256 => bool) public oidBoundToPosition;
 
     event FillAttested(
         uint256 indexed oid,
@@ -113,13 +130,18 @@ contract TorchFdcConsumer {
 
     /// @notice Bind an FDC-attested fill to the TorchVault position it backs.
     /// The expected JQ is rebuilt from the position's stored order id, so a
-    /// proof for any other fill — or any looser transform — cannot pass.
+    /// proof for any other fill — or any looser transform — cannot pass. The
+    /// fill must also match the position's market and direction, and each
+    /// exchange fill can back at most one position. (Price/size equivalence is
+    /// recorded in the event but not enforced: entry prices are FTSO-banded
+    /// marks and testnet exchange prices legitimately drift from them.)
     function attestFillForPosition(uint256 positionId, IWeb2Json.Proof calldata proof) external {
         IWeb2Json.RequestBody calldata req = _verify(proof);
 
         ITorchVault.Position memory p = vault.getPosition(positionId);
         require(p.hlOid != 0, "FDC: position has no exchange oid");
         require(positionAttestedOid[positionId] == 0, "FDC: position already attested");
+        require(!oidBoundToPosition[p.hlOid], "FDC: fill already backs a position");
 
         string memory expectedJq = string.concat(
             "map(select(.oid == ",
@@ -130,8 +152,17 @@ contract TorchFdcConsumer {
 
         HlFill memory f = abi.decode(proof.data.responseBody.abiEncodedData, (HlFill));
         require(f.oid == p.hlOid, "FDC: oid mismatch");
+        require(
+            keccak256(bytes(f.coin)) == keccak256(bytes(_b32ToString(p.market))),
+            "FDC: fill coin != position market"
+        );
+        require(
+            keccak256(bytes(f.side)) == keccak256(bytes(p.isLong ? "Open Long" : "Open Short")),
+            "FDC: fill direction != position side"
+        );
 
         positionAttestedOid[positionId] = f.oid;
+        oidBoundToPosition[p.hlOid] = true;
         emit PositionFillAttested(positionId, p.hlOid, f.px, f.sz, proof.data.votingRound);
     }
 
@@ -147,10 +178,23 @@ contract TorchFdcConsumer {
         req = proof.data.requestBody;
         require(_eq(req.url, EXPECTED_URL), "FDC: wrong source URL");
         require(_eq(req.body, EXPECTED_BODY), "FDC: wrong account");
+        require(_eq(req.httpMethod, EXPECTED_METHOD), "FDC: wrong method");
+        require(_eq(req.headers, EXPECTED_HEADERS), "FDC: wrong headers");
+        require(_eq(req.queryParams, EXPECTED_QUERY), "FDC: wrong query");
+        require(_eq(req.abiSignature, EXPECTED_ABI_SIG), "FDC: wrong abi signature");
     }
 
     function _eq(string calldata a, string memory b) private pure returns (bool) {
         return keccak256(bytes(a)) == keccak256(bytes(b));
+    }
+
+    /// @dev bytes32("BTC") -> "BTC" (right-padded zeros trimmed).
+    function _b32ToString(bytes32 b) private pure returns (string memory) {
+        uint256 len;
+        while (len < 32 && b[len] != 0) len++;
+        bytes memory out = new bytes(len);
+        for (uint256 i = 0; i < len; i++) out[i] = b[i];
+        return string(out);
     }
 
     function _toString(uint256 value) private pure returns (string memory) {

@@ -13,7 +13,12 @@ async function main() {
 
   // The consumer binds attestations to vault positions, so it needs the vault.
   const depFile = path.join(__dirname, "..", "..", "web", "src", "generated", "deployments.json");
-  const { vault } = JSON.parse(fs.readFileSync(depFile, "utf8"));
+  const { vault, mode } = JSON.parse(fs.readFileSync(depFile, "utf8"));
+  if (mode !== "coston2") {
+    throw new Error(
+      `deployments.json holds a "${mode}" deployment — deploying a Coston2 consumer bound to it would brick attestFillForPosition. Run deploy:coston2 first.`
+    );
+  }
   console.log("vault:", vault);
 
   const Factory = await ethers.getContractFactory("TorchFdcConsumer");

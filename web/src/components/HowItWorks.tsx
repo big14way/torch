@@ -32,7 +32,7 @@ export default function HowItWorks({ onClose }: { onClose: () => void }) {
           The path off the operator's word is already live: Flare's Data Connector
           (Web2Json) proved a vault position's real Hyperliquid fill on-chain,{" "}
           <a
-            href="https://coston2-explorer.flare.network/tx/0xd1f777576f297d49f52a70306b59433a914a5acc4cb957c6db5091bd6b5c8fbe"
+            href="https://coston2-explorer.flare.network/tx/0xb80330ba62544314a7f3d50ff22d0798258fecb56fcabf6d25a5b91a0e674d7d"
             target="_blank"
             rel="noreferrer"
           >
