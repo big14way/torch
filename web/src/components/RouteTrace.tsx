@@ -1,4 +1,4 @@
-import { DEPLOY, type Position } from "../lib/config";
+import { DEPLOY, FDC, type Position } from "../lib/config";
 
 /**
  * The route trace is Torch's signature element. It renders the actual
@@ -68,6 +68,36 @@ export default function RouteTrace({ positions }: { positions: Position[] | unde
           </>
         )}
       </div>
+      {DEPLOY.mode === "coston2" && (FDC.positionAttest || FDC.attestTx) && (
+        <div className="tee-badge">
+          <span aria-hidden="true">✓</span>
+          {FDC.positionAttest ? (
+            <>
+              FDC: vault position #{FDC.positionAttest.positionId} bound to its real Hyperliquid
+              fill (oid {FDC.positionAttest.oid}) by Flare's validators.{" "}
+              <a
+                href={`https://coston2-explorer.flare.network/tx/${FDC.positionAttest.tx}`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                proof
+              </a>
+            </>
+          ) : (
+            <>
+              FDC: a real Hyperliquid fill ({FDC.attestedCoin} #{FDC.attestedOid}) attested
+              on-chain by Flare's validators.{" "}
+              <a
+                href={`https://coston2-explorer.flare.network/tx/${FDC.attestTx}`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                proof
+              </a>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }

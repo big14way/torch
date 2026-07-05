@@ -125,10 +125,17 @@ export default function AccountPanel() {
         )}
         {DEPLOY.mode === "coston2" && (
           <a className="btn primary wide" href="https://faucet.flare.network" target="_blank" rel="noreferrer" style={{ textAlign: "center" }}>
-            Get testnet FXRP
+            Faucet: C2FLR gas + FXRP
           </a>
         )}
       </div>
+
+      {DEPLOY.mode === "coston2" && (
+        <div className="notice">
+          In the faucet, claim C2FLR for gas, then pick <b>FTestXRP</b> in the token dropdown for
+          margin. Deposit it here once it lands.
+        </div>
+      )}
 
       {note && <div className="notice">{note}</div>}
     </div>

@@ -25,14 +25,15 @@
   --border: 1px solid var(--ash);
 }
 
-/* stat strip: live protocol numbers under the header */
-.statstrip {
+/* protocol stats: live vault numbers under the header (distinct from the
+   header's .statstrip price ticker — same name previously collided). */
+.protostats {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 10px;
   margin: 0 0 14px;
 }
-.statstrip .stat {
+.protostats .stat {
   background: var(--soot);
   border: var(--border);
   border-radius: var(--radius);
@@ -41,20 +42,20 @@
   flex-direction: column;
   gap: 3px;
 }
-.statstrip .stat b {
+.protostats .stat b {
   font-family: var(--font-data);
   font-size: 18px;
   color: var(--bone);
   letter-spacing: -0.02em;
 }
-.statstrip .stat span {
+.protostats .stat span {
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--smoke);
 }
 @media (max-width: 720px) {
-  .statstrip { grid-template-columns: repeat(2, 1fr); }
+  .protostats { grid-template-columns: repeat(2, 1fr); }
 }
 
 * { box-sizing: border-box; }

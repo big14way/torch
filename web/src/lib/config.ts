@@ -4,6 +4,7 @@ import { injected } from "wagmi/connectors";
 import deployments from "../generated/deployments.json";
 import vaultAbiJson from "../generated/TorchVault.abi.json";
 import erc20AbiJson from "../generated/ERC20.abi.json";
+import fdcJson from "../generated/fdc.json";
 
 export const DEPLOY = deployments as {
   chainId: number;
@@ -18,6 +19,17 @@ export const DEPLOY = deployments as {
 
 export const VAULT_ABI = vaultAbiJson as Abi;
 export const ERC20_ABI = erc20AbiJson as Abi;
+
+// FDC Web2Json attestation record (written by contracts/scripts/fdcAttest.ts).
+export const FDC = fdcJson as {
+  fdcConsumer: `0x${string}`;
+  network: string;
+  vault?: `0x${string}`;
+  attestTx?: `0x${string}`;
+  attestedOid?: string;
+  attestedCoin?: string;
+  positionAttest?: { positionId: string; oid: string; tx: `0x${string}` };
+};
 
 export const localhostChain = defineChain({
   id: 31337,

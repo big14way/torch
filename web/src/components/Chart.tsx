@@ -41,8 +41,10 @@ export default function Chart({ marketKey, mark }: { marketKey: string; mark: bi
   const boxRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
-  const lastCandleRef = useRef<CandlestickData | null>(null);
-  const seededForRef = useRef<string>("");
+  // Per-market candle history: seeded once, then rolled forward from live marks.
+  // Without this, revisiting a market regenerated a different random history.
+  const cacheRef = useRef(new Map<string, CandlestickData[]>());
+  const shownRef = useRef<string>("");
 
   // build chart once
   useEffect(() => {
@@ -80,30 +82,35 @@ export default function Chart({ marketKey, mark }: { marketKey: string; mark: bi
     };
   }, []);
 
-  // seed on market change, roll candles on mark updates
+  // seed once per market (cached), roll candles on mark updates
   useEffect(() => {
     const series = seriesRef.current;
     if (!series || mark === undefined) return;
     const price = Number(mark) / 1e6;
+    const cache = cacheRef.current;
 
-    if (seededForRef.current !== marketKey) {
-      const candles = seedCandles(price);
-      series.setData(candles);
-      lastCandleRef.current = candles[candles.length - 1];
-      seededForRef.current = marketKey;
+    if (shownRef.current !== marketKey) {
+      let candles = cache.get(marketKey);
+      if (!candles) {
+        candles = seedCandles(price);
+        cache.set(marketKey, candles);
+      }
+      series.setData([...candles]);
+      shownRef.current = marketKey;
       chartRef.current?.timeScale().scrollToRealTime();
       return;
     }
 
+    const candles = cache.get(marketKey);
+    if (!candles || candles.length === 0) return;
+    const last = candles[candles.length - 1];
     const now = Math.floor(Date.now() / 1000);
-    const last = lastCandleRef.current;
-    if (!last) return;
     const bucket = (Math.floor(now / CANDLE_SECONDS) * CANDLE_SECONDS) as UTCTimestamp;
 
     if (bucket > (last.time as number)) {
       const fresh: CandlestickData = { time: bucket, open: last.close, high: Math.max(last.close, price), low: Math.min(last.close, price), close: price };
       series.update(fresh);
-      lastCandleRef.current = fresh;
+      candles.push(fresh);
     } else {
       const updated: CandlestickData = {
         ...last,
@@ -112,7 +119,7 @@ export default function Chart({ marketKey, mark }: { marketKey: string; mark: bi
         close: price,
       };
       series.update(updated);
-      lastCandleRef.current = updated;
+      candles[candles.length - 1] = updated;
     }
   }, [mark, marketKey]);
 
@@ -120,7 +127,7 @@ export default function Chart({ marketKey, mark }: { marketKey: string; mark: bi
     <div>
       <div className="chart-head">
         <span className="px">{mark !== undefined ? `$${fmtPx(mark)}` : "..."}</span>
-        <span className="sub">{marketKey}-PERP, mark from Flare FTSOv2, 30s candles</span>
+        <span className="sub">{marketKey}-PERP, live 30s candles off the FTSOv2 mark (synthetic warm-up history)</span>
       </div>
       <div ref={boxRef} className="chartbox" />
     </div>

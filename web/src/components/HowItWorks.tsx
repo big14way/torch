@@ -29,9 +29,17 @@ export default function HowItWorks({ onClose }: { onClose: () => void }) {
         </ol>
         <p>
           Honest v0 trust model: you are trusting a verifiable operator, not a black box.
-          Roadmap: FDC Web2Json attestations of Hyperliquid fills, then migration to
-          Flare's Protocol Managed Wallets when FCC ships, which replaces the single
-          operator with a protocol-run quorum of TEEs.
+          The path off the operator's word is already live: Flare's Data Connector
+          (Web2Json) proved a vault position's real Hyperliquid fill on-chain,{" "}
+          <a
+            href="https://coston2-explorer.flare.network/tx/0xd1f777576f297d49f52a70306b59433a914a5acc4cb957c6db5091bd6b5c8fbe"
+            target="_blank"
+            rel="noreferrer"
+          >
+            verified by Flare's validators here
+          </a>
+          . Next: the executor role migrates to Flare's Protocol Managed Wallets when FCC
+          ships, replacing the single operator with a protocol-run quorum of TEEs.
         </p>
       </div>
     </div>

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useAccount, useChainId, useConnect, useDisconnect, useSwitchChain } from "wagmi";
+import { useAccount, useConnect, useDisconnect, useSwitchChain } from "wagmi";
 import { ACTIVE_CHAIN, DEPLOY } from "../lib/config";
 import { fmtPx, useXrpPrice } from "../lib/hooks";
 
@@ -44,10 +44,12 @@ export default function Header({
   mark: bigint | undefined;
   onHow: () => void;
 }) {
-  const { address, isConnected } = useAccount();
+  // useAccount().chainId reflects the wallet's actual chain; wagmi's useChainId()
+  // only ever returns the configured chain in a single-chain setup, so it can
+  // never detect a wallet sitting on the wrong network.
+  const { address, isConnected, chainId } = useAccount();
   const { connect, connectors, isPending } = useConnect();
   const { disconnect } = useDisconnect();
-  const chainId = useChainId();
   const { switchChain } = useSwitchChain();
   const { data: xrpPx } = useXrpPrice();
 

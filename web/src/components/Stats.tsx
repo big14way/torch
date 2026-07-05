@@ -4,7 +4,7 @@ import { useGlobalStats, fmtUsd6, fmtFxrp } from "../lib/hooks";
 export default function Stats() {
   const { insurance, openInterest, volume, openCount } = useGlobalStats();
   return (
-    <div className="statstrip" aria-live="polite">
+    <div className="protostats" aria-live="polite">
       <div className="stat">
         <b>${fmtUsd6(volume)}</b>
         <span>notional routed</span>

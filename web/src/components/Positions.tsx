@@ -90,7 +90,8 @@ export default function Positions({ positions }: { positions: Position[] | undef
                     </span>
                   ) : live !== null ? (
                     <span className={live >= 0n ? "pnl-pos" : "pnl-neg"}>
-                      {live >= 0n ? "+" : ""}${fmtUsd6(live)}
+                      {live >= 0n ? "+$" : "-$"}
+                      {fmtUsd6(live >= 0n ? live : -live)}
                     </span>
                   ) : (
                     "..."
