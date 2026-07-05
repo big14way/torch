@@ -2,6 +2,8 @@
 
 Trade perps with your XRP. Margin stays on Flare, execution happens on Hyperliquid's orderbook, and the keys that bridge the two live inside a TEE.
 
+**Live on Coston2 testnet: https://usetorch.vercel.app** — grab free C2FLR + FTestXRP from the [Flare faucet](https://faucet.flare.network), deposit, trade. Three minutes, costs nothing.
+
 Built for the Flare Summer Signal hackathon, entering both bounties:
 
 - Interoperable Asset Products: FXRP margin on Flare routed to external Hyperliquid liquidity
