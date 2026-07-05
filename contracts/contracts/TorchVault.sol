@@ -12,8 +12,9 @@ import {IPriceReader} from "./interfaces/IPriceReader.sol";
 /// @title TorchVault
 /// @notice XRP-margined perps on Flare. Users post FXRP as margin on Flare and
 /// positions are executed on Hyperliquid's orderbook by an off-chain executor
-/// whose key lives inside a TEE (Google Confidential Space in production,
-/// migrating to Flare Protocol Managed Wallets when FCC ships on Songbird).
+/// whose key lives inside a hardware TEE (an attested Intel TDX enclave in the
+/// live deployment, migrating to Flare Protocol Managed Wallets when FCC ships
+/// on Songbird).
 ///
 /// Trust model (v0, stated honestly):
 ///  - The executor reports entry / exit prices, but every reported price must

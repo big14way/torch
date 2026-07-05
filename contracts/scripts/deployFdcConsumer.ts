@@ -10,15 +10,21 @@ import * as path from "path";
 async function main() {
   const [deployer] = await ethers.getSigners();
   console.log("deployer:", deployer.address);
+
+  // The consumer binds attestations to vault positions, so it needs the vault.
+  const depFile = path.join(__dirname, "..", "..", "web", "src", "generated", "deployments.json");
+  const { vault } = JSON.parse(fs.readFileSync(depFile, "utf8"));
+  console.log("vault:", vault);
+
   const Factory = await ethers.getContractFactory("TorchFdcConsumer");
-  const c = await Factory.deploy();
+  const c = await Factory.deploy(vault);
   await c.waitForDeployment();
   const addr = await c.getAddress();
   console.log("TorchFdcConsumer:", addr);
 
   // Record it alongside the generated deployment config for the script to read.
   const file = path.join(__dirname, "..", "..", "web", "src", "generated", "fdc.json");
-  fs.writeFileSync(file, JSON.stringify({ fdcConsumer: addr, network: "coston2" }, null, 2));
+  fs.writeFileSync(file, JSON.stringify({ fdcConsumer: addr, network: "coston2", vault }, null, 2));
   console.log("wrote", file);
 }
 

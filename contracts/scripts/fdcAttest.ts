@@ -3,10 +3,13 @@ import * as fs from "fs";
 import * as path from "path";
 
 /**
- * FDC Web2Json spike: attest wallet F's latest Hyperliquid testnet fill through
- * the Flare Data Connector and verify it on-chain in TorchFdcConsumer.
- * Full round trip (~3-5 min): prepareRequest -> FdcHub -> wait round -> DA proof
- * -> attestFill.  npm run fdc:attest -w contracts
+ * FDC Web2Json: attest a Hyperliquid testnet fill through the Flare Data
+ * Connector and verify it on-chain in TorchFdcConsumer. Full round trip
+ * (~3-5 min): prepareRequest -> FdcHub -> wait round -> DA proof -> attest.
+ *
+ *   npm run fdc:attest -w contracts                    # latest fill -> attestFill
+ *   POSITION_ID=10 npm run fdc:attest -w contracts     # bind the fill backing a
+ *                                                      # vault position -> attestFillForPosition
  */
 const REGISTRY = "0xaD67FE66660Fb8dFE9d6b1b4240d8650e30F6019";
 const VERIFIER_PREPARE = "https://fdc-verifiers-testnet.flare.network/verifier/web2/Web2Json/prepareRequest";
@@ -31,7 +34,13 @@ const abiSignature = JSON.stringify({
   type: "tuple",
 });
 
-const requestJson = {
+// Latest-fill transform; the position-bound mode swaps in a select-by-oid
+// transform that TorchFdcConsumer reconstructs on-chain from the vault.
+const LATEST_JQ = "{coin: .[0].coin, side: .[0].dir, px: .[0].px, sz: .[0].sz, oid: .[0].oid, time: .[0].time}";
+const oidJq = (oid: bigint) =>
+  `map(select(.oid == ${oid})) | .[0] | {coin: .coin, side: .dir, px: .px, sz: .sz, oid: .oid, time: .time}`;
+
+const buildRequest = (postProcessJq: string) => ({
   attestationType: utf8Hex32("Web2Json"),
   sourceId: utf8Hex32("PublicWeb2"),
   requestBody: {
@@ -40,10 +49,10 @@ const requestJson = {
     headers: JSON.stringify({ "Content-Type": "application/json" }),
     queryParams: "{}",
     body: JSON.stringify({ type: "userFills", user: HL_USER }),
-    postProcessJq: "{coin: .[0].coin, side: .[0].dir, px: .[0].px, sz: .[0].sz, oid: .[0].oid, time: .[0].time}",
+    postProcessJq,
     abiSignature,
   },
-};
+});
 
 const RESPONSE_ABI = [
   "tuple(bytes32 attestationType,bytes32 sourceId,uint64 votingRound,uint64 lowestUsedTimestamp,tuple(string url,string httpMethod,string headers,string queryParams,string body,string postProcessJq,string abiSignature) requestBody,tuple(bytes abiEncodedData) responseBody)",
@@ -52,8 +61,21 @@ const RESPONSE_ABI = [
 async function main() {
   const [signer] = await ethers.getSigners();
   const fdcPath = path.join(__dirname, "..", "..", "web", "src", "generated", "fdc.json");
-  const { fdcConsumer } = JSON.parse(fs.readFileSync(fdcPath, "utf8"));
+  const { fdcConsumer, vault } = JSON.parse(fs.readFileSync(fdcPath, "utf8"));
   console.log("consumer:", fdcConsumer, "| signer:", signer.address);
+
+  // Position-bound mode: the JQ selects exactly the fill the vault says backs
+  // the position, so the proof cannot attest anything else.
+  const positionId = process.env.POSITION_ID ? BigInt(process.env.POSITION_ID) : null;
+  let hlOid: bigint | null = null;
+  if (positionId !== null) {
+    const torchVault = await ethers.getContractAt("TorchVault", vault);
+    const p = await torchVault.getPosition(positionId);
+    hlOid = BigInt(p.hlOid);
+    if (hlOid === 0n) throw new Error(`position ${positionId} has no Hyperliquid oid (mock fill)`);
+    console.log(`binding position #${positionId} (hlOid ${hlOid})`);
+  }
+  const requestJson = buildRequest(hlOid !== null ? oidJq(hlOid) : LATEST_JQ);
 
   console.log("1) prepareRequest ...");
   const prepRes = await fetch(VERIFIER_PREPARE, {
@@ -116,16 +138,35 @@ async function main() {
   const proof = { merkleProof: [...(da.proof ?? [])], data: deepPlain(responseData) };
   console.log("   got proof, merkle nodes:", proof.merkleProof.length);
 
-  console.log("5) attestFill on-chain ...");
   const consumer = await ethers.getContractAt("TorchFdcConsumer", fdcConsumer);
-  const tx2 = await consumer.attestFill(proof);
-  await tx2.wait();
+  const cfg = JSON.parse(fs.readFileSync(fdcPath, "utf8"));
 
-  const f = await consumer.lastFill();
-  const n = await consumer.attestedCount();
-  console.log("\n=== ATTESTED ON-CHAIN (FDC-verified Hyperliquid fill) ===");
-  console.log(`  ${f.coin} ${f.side}  px ${f.px}  sz ${f.sz}  oid ${f.oid} time ${f.time}`);
-  console.log("  attestedCount:", n.toString(), "| verify tx:", tx2.hash);
+  if (positionId !== null) {
+    console.log(`5) attestFillForPosition(${positionId}) on-chain ...`);
+    const tx2 = await consumer.attestFillForPosition(positionId, proof);
+    await tx2.wait();
+    const bound = await consumer.positionAttestedOid(positionId);
+    console.log("\n=== POSITION FILL ATTESTED ON-CHAIN (FDC-verified) ===");
+    console.log(`  vault position #${positionId} <- Hyperliquid oid ${bound}`);
+    console.log("  verify tx:", tx2.hash);
+    cfg.positionAttest = { positionId: positionId.toString(), oid: bound.toString(), tx: tx2.hash };
+  } else {
+    console.log("5) attestFill on-chain ...");
+    const tx2 = await consumer.attestFill(proof);
+    await tx2.wait();
+    const f = await consumer.lastFill();
+    const n = await consumer.attestedCount();
+    console.log("\n=== ATTESTED ON-CHAIN (FDC-verified Hyperliquid fill) ===");
+    console.log(`  ${f.coin} ${f.side}  px ${f.px}  sz ${f.sz}  oid ${f.oid} time ${f.time}`);
+    console.log("  attestedCount:", n.toString(), "| verify tx:", tx2.hash);
+    cfg.attestTx = tx2.hash;
+    cfg.attestedOid = f.oid.toString();
+    cfg.attestedCoin = f.coin;
+  }
+
+  // Record the proof tx(s) so the web UI can link straight to them.
+  fs.writeFileSync(fdcPath, JSON.stringify(cfg, null, 2));
+  console.log("updated", fdcPath);
 }
 
 main().catch((e) => {
