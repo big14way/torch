@@ -68,13 +68,13 @@ export function livePnlUsd6(p: Position, mark: bigint | undefined): bigint | nul
 /** Every position in the vault. Stats and the leaderboard both derive from
  * this one query set; wagmi dedupes identical queries, so mounting both costs
  * no extra RPC calls. */
-export function useAllPositions(): Position[] {
+export function useAllPositions(): { positions: Position[]; loading: boolean } {
   const { data: count } = useReadContract({
     ...VAULT,
     functionName: "positionsCount",
     query: { refetchInterval: 10000 },
   });
-  const n = count ? Number(count) : 0;
+  const n = count !== undefined ? Number(count) : 0;
   const { data: results } = useReadContracts({
     contracts: Array.from({ length: n }, (_, i) => ({
       ...VAULT,
@@ -87,7 +87,7 @@ export function useAllPositions(): Position[] {
   for (const r of results ?? []) {
     if (r.status === "success" && r.result) out.push(r.result as Position);
   }
-  return out;
+  return { positions: out, loading: count === undefined || (n > 0 && results === undefined) };
 }
 
 /** Protocol-wide live numbers: insurance fund, open interest, notional routed. */
@@ -97,7 +97,7 @@ export function useGlobalStats() {
     functionName: "insuranceFund",
     query: { refetchInterval: 10000 },
   });
-  const all = useAllPositions();
+  const { positions: all } = useAllPositions();
 
   let openInterest = 0n;
   let volume = 0n;
@@ -132,27 +132,36 @@ export type LeagueRow = {
   open: number;
 };
 
-/** Rank every trader by realized PnL (FXRP). Liquidations count against you. */
-export function useLeaderboard(): LeagueRow[] {
-  const all = useAllPositions();
+/** Rank every trader by realized PnL (FXRP). Liquidations count against you.
+ * Settled results belong to the season they SETTLE in (closedAt), so a
+ * position opened before the window but liquidated inside it still counts;
+ * open exposure is windowed by openedAt. Losses are capped at posted margin:
+ * the contract stores unclamped mark PnL, but nobody can lose more than they
+ * put up. */
+export function useLeaderboard(): { rows: LeagueRow[]; loading: boolean } {
+  const { positions: all, loading } = useAllPositions();
   const by = new Map<string, LeagueRow>();
   for (const p of all) {
     if (p.entryPrice6 === 0n) continue; // never filled
-    const t = Number(p.openedAt);
+    const s = Number(p.status);
+    const settled = s === 4 || s === 5;
+    const t = Number(settled ? p.closedAt : p.openedAt);
     if (LEAGUE_START && t < LEAGUE_START) continue;
     if (LEAGUE_END && t > LEAGUE_END) continue;
-    const s = Number(p.status);
     const row =
       by.get(p.owner) ??
       ({ owner: p.owner, realizedFxrp: 0n, trades: 0, volumeUsd6: 0n, liquidations: 0, open: 0 } as LeagueRow);
     row.trades += 1;
     row.volumeUsd6 += p.sizeUsd6;
     if (s === 2 || s === 3) row.open += 1;
-    if (s === 4 || s === 5) row.realizedFxrp += p.pnlFxrp;
+    if (settled) {
+      row.realizedFxrp += p.pnlFxrp < -p.marginFxrp ? -p.marginFxrp : p.pnlFxrp;
+    }
     if (s === 5) row.liquidations += 1;
     by.set(p.owner, row);
   }
-  return [...by.values()].sort((a, b) =>
+  const rows = [...by.values()].sort((a, b) =>
     b.realizedFxrp > a.realizedFxrp ? 1 : b.realizedFxrp < a.realizedFxrp ? -1 : b.trades - a.trades
   );
+  return { rows, loading };
 }

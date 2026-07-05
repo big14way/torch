@@ -7,7 +7,7 @@ const RANK = ["🔥", "🥈", "🥉"];
  * Reads straight from the vault; dark-palette and screenshot-friendly on
  * purpose (the league posts a leaderboard image twice a week). */
 export default function Leaderboard() {
-  const rows = useLeaderboard();
+  const { rows, loading } = useLeaderboard();
   const { address } = useAccount();
 
   return (
@@ -15,11 +15,14 @@ export default function Leaderboard() {
       <div className="league-head">
         <h2>HALL OF FLAME</h2>
         <span className="league-sub">
-          Paper Perps League · Coston2 testnet · ranked by realized PnL, liquidations held against you
+          Paper Perps League · Coston2 testnet · ranked by realized PnL (losses capped at posted
+          margin), liquidations held against you
         </span>
       </div>
 
-      {rows.length === 0 ? (
+      {loading ? (
+        <div className="empty">Lighting the board...</div>
+      ) : rows.length === 0 ? (
         <div className="empty">No settled trades yet. The league is warming up.</div>
       ) : (
         <div style={{ overflowX: "auto" }}>
@@ -37,6 +40,8 @@ export default function Leaderboard() {
             <tbody>
               {rows.slice(0, 10).map((r, i) => {
                 const isYou = address && r.owner.toLowerCase() === address.toLowerCase();
+                // below half a displayed cent either way, show a signless flat 0.00
+                const flat = r.realizedFxrp < 5_000n && r.realizedFxrp > -5_000n;
                 return (
                   <tr key={r.owner} className={isYou ? "league-you" : undefined}>
                     <td className={`league-rank r${i + 1}`}>{RANK[i] ?? `#${i + 1}`}</td>
@@ -45,10 +50,14 @@ export default function Leaderboard() {
                       {isYou && <span className="pill sm-pill">you</span>}
                     </td>
                     <td>
-                      <span className={r.realizedFxrp >= 0n ? "pnl-pos" : "pnl-neg"}>
-                        {r.realizedFxrp >= 0n ? "+" : ""}
-                        {fmtFxrp(r.realizedFxrp)} FXRP
-                      </span>
+                      {flat ? (
+                        <span>0.00 FXRP</span>
+                      ) : (
+                        <span className={r.realizedFxrp > 0n ? "pnl-pos" : "pnl-neg"}>
+                          {r.realizedFxrp > 0n ? "+" : ""}
+                          {fmtFxrp(r.realizedFxrp)} FXRP
+                        </span>
+                      )}
                     </td>
                     <td>{r.trades}</td>
                     <td>${fmtUsd6(r.volumeUsd6, 0)}</td>
