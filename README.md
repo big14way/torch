@@ -33,14 +33,9 @@ Trust model, stated honestly. This is v0, a verifiable operator, not yet a trust
 
 ```
 torch/
-  contracts/   Hardhat project: TorchVault, mocks, FtsoV2Reader, deploy + smoke scripts
+  contracts/   Hardhat project: TorchVault, TorchFdcConsumer, mocks, FtsoV2Reader, deploy + FDC scripts
   agent/       TypeScript executor: watches the vault, fills on the exchange, liquidates
   web/         Vite + React trading terminal (wagmi v2, viem, lightweight-charts)
-  BUILD.md     week-by-week plan to the Aug 14 deadline
-  DESIGN.md    the full UI/UX system
-  TRACTION.md  X strategy, ready-to-post threads, Paper Perps League plan
-  ULTIMATE_PROMPT.md  one prompt that rebuilds or extends the whole project
-  DEMO_SCRIPT.md      3 minute demo video script
 ```
 
 ## Run it locally, end to end
@@ -104,7 +99,7 @@ npm run smoke -w contracts
 | TorchVault | [`0x7fC640Bd0e635a6AFc3B437e80f0DE192f6FA0BA`](https://coston2-explorer.flare.network/address/0x7fC640Bd0e635a6AFc3B437e80f0DE192f6FA0BA) |
 | FtsoV2Reader | [`0xe98BEc67F44993c3a9f479500a23f26ca05BcFc5`](https://coston2-explorer.flare.network/address/0xe98BEc67F44993c3a9f479500a23f26ca05BcFc5) |
 | FXRP (FTestXRP) | [`0x0b6A3645c240605887a5532109323A3E12273dc7`](https://coston2-explorer.flare.network/address/0x0b6A3645c240605887a5532109323A3E12273dc7) |
-| TorchFdcConsumer | [`0x2700E6f99dBe91283aC17bB0D03a5E34Da484451`](https://coston2-explorer.flare.network/address/0x2700E6f99dBe91283aC17bB0D03a5E34Da484451) |
+| TorchFdcConsumer | [`0x0477BeD86FeA5c4c0ae4bC3AAdbEe42D76273e22`](https://coston2-explorer.flare.network/address/0x0477BeD86FeA5c4c0ae4bC3AAdbEe42D76273e22#code) (verified) |
 
 Markets XRP, BTC, ETH are listed at up to 10x, every executor price bounded live by the enshrined FtsoV2 (verified on-chain after deploy: the vault reads real FTSO marks, normalized to 6 decimals).
 
@@ -119,10 +114,12 @@ In this deployment the enclave fills at the FTSO mark; the live Hyperliquid hop 
 
 **FDC Web2Json fill attestation (the path off trusted reports):**
 
-The roadmap's endgame is that a fill is not believed because our executor reported it, but because Flare's own validators re-fetched Hyperliquid and agreed. `TorchFdcConsumer` verifies a Flare Data Connector Web2Json proof on-chain and records the fill — anyone can reproduce it with `npm run fdc:attest -w contracts`. The flow: prepare the request at the FDC verifier, submit to `FdcHub`, wait the voting round, pull the Merkle proof from the DA layer, then `attestFill` verifies it through `ContractRegistry.getFdcVerification()` and decodes the fill.
+The endgame of the trust model is that a fill is not believed because our executor reported it, but because Flare's own validators re-fetched Hyperliquid and agreed. That is live, and it is bound to real positions:
 
-- Live attested fill (BTC, oid `55912796181`, from wallet F's Hyperliquid testnet history): verify tx [`0xb99c88ac…dcf1d08f`](https://coston2-explorer.flare.network/tx/0xb99c88ac5b9c9e165b51cd247579227959325ba37e149a61ea556459dcf1d08f)
-- Kept out of the hot path on purpose: a round trip is ~2 min plus a fee, so requiring an inline proof on every `confirmFill` would stall the live loop. The consumer stands as the verifiable settlement path, not a per-fill tax.
+- **A vault position is cryptographically tied to its exchange fill.** `attestFillForPosition(positionId, proof)` reads the Hyperliquid order id the vault stored at `confirmFill`, reconstructs the exact JQ transform for that order id on-chain, and only accepts an FDC proof whose request matches it — pinned URL, pinned account, pinned transform. Live: vault position #10 bound to Hyperliquid oid `55912729349` in tx [`0xd1f77757…5c8fbe`](https://coston2-explorer.flare.network/tx/0xd1f777576f297d49f52a70306b59433a914a5acc4cb957c6db5091bd6b5c8fbe).
+- Standalone fill attestation (`attestFill`, latest fill, replay-guarded by order id): tx [`0x198f375a…602a3e`](https://coston2-explorer.flare.network/tx/0x198f375a890b7fd65828c222eae177cef0bf4064baa1a2ab1424a5733d602a3e).
+- Anyone can reproduce either: `npm run fdc:attest -w contracts` (latest fill) or `POSITION_ID=10 npm run fdc:attest -w contracts` (position-bound). The flow: prepare the request at the FDC verifier, submit to `FdcHub`, wait the voting round (~2-3 min), pull the Merkle proof from the DA layer, then the consumer verifies it through `ContractRegistry.getFdcVerification()`.
+- Kept out of the `confirmFill` hot path on purpose: a round trip is ~2 min plus a fee, so requiring an inline proof on every fill would stall the live loop. Attestation is the settlement-verification path — any fill the vault records can be proven after the fact, by anyone, without trusting us.
 
 To reproduce the deployment from scratch:
 
@@ -154,19 +151,19 @@ Set `EXECUTION_MODE=testnet` in `agent/.env`. Prerequisites, in order:
 
 The adapter uses the community SDK `@nktkas/hyperliquid` (verified against 0.15.4: `WalletClient`, `HttpTransport({ url: { api } })`, viem account as signer). Reads go through the public `/info` endpoint.
 
-Important: this sandbox-built adapter has not been fired against the live testnet yet. Smoke-test one open and one close manually before any demo. Tick and lot size rounding per asset is the most likely thing to need a fix.
+The adapter has been proven against the live testnet: real BTC and ETH fills placed and closed through this code path (18 fills on the demo account), with per-asset lot rounding and the $10 minimum-notional guard exercised. One of those fills is FDC-attested on-chain (see the Coston2 section above).
 
-## Assumptions to verify before submission
+## Assumptions, flagged then verified
 
-These are flagged, not hidden:
+Every launch assumption was written down before deploying and checked live. Status of each:
 
-1. FtsoV2Reader assumes the view-style `getFeedById` works with zero fees on Coston2 (the TestFtsoV2Interface pattern from Flare docs). Verify with one live read after deploy.
-2. Feed ids for XRP/USD, BTC/USD, ETH/USD are constructed per the documented bytes21 scheme. Verify against the live feed list at https://dev.flare.network/ftso/feeds
-3. The FlareContractRegistry address in `resolveFtsoV2.ts` is the documented canonical one. The script itself is the verification: if it resolves FtsoV2, it is right.
-4. Hyperliquid testnet faucet requires a prior mainnet deposit from the same address. Budget a small mainnet deposit early in week 1.
-5. Hyperliquid order placement (signing, tick rounding, IOC semantics) must be proven with one live round trip on testnet.
-6. FDC Web2Json availability and exact request shape on Coston2 should be re-checked the week you wire it (roadmap item, not in this MVP).
-7. Real FXRP has 6 decimals like the mock. Confirm on the Coston2 token contract before pointing the vault at it.
+1. ✅ FtsoV2Reader's view-style `getFeedById` works with zero fees on Coston2 — verified with a live pre-deploy read probe, and every position since settles against it.
+2. ✅ Feed ids for XRP/USD, BTC/USD, ETH/USD (bytes21 scheme) — match the live feed list at https://dev.flare.network/ftso/feeds
+3. ✅ The FlareContractRegistry address in `resolveFtsoV2.ts` resolved the live FtsoV2 on Coston2.
+4. ✅ Hyperliquid testnet faucet gating — handled with a small mainnet deposit in week 1.
+5. ✅ Hyperliquid order placement — proven with real open/close round trips on testnet (signing, lot rounding, IOC semantics all exercised).
+6. ✅ FDC Web2Json on Coston2 — live and working: a real Hyperliquid fill attested on-chain (verify tx in the Coston2 section above).
+7. ✅ Real FXRP (FTestXRP) has 6 decimals — confirmed on the Coston2 token contract before pointing the vault at it.
 
 ## Security notes
 
