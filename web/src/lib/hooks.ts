@@ -65,16 +65,13 @@ export function livePnlUsd6(p: Position, mark: bigint | undefined): bigint | nul
   return p.isLong ? (size * (mark - entry)) / entry : (size * (entry - mark)) / entry;
 }
 
-/** Protocol-wide live numbers: insurance fund, open interest, notional routed. */
-export function useGlobalStats() {
+/** Every position in the vault. Stats and the leaderboard both derive from
+ * this one query set; wagmi dedupes identical queries, so mounting both costs
+ * no extra RPC calls. */
+export function useAllPositions(): Position[] {
   const { data: count } = useReadContract({
     ...VAULT,
     functionName: "positionsCount",
-    query: { refetchInterval: 10000 },
-  });
-  const { data: insurance } = useReadContract({
-    ...VAULT,
-    functionName: "insuranceFund",
     query: { refetchInterval: 10000 },
   });
   const n = count ? Number(count) : 0;
@@ -86,13 +83,26 @@ export function useGlobalStats() {
     })),
     query: { enabled: n > 0, refetchInterval: 10000 },
   });
+  const out: Position[] = [];
+  for (const r of results ?? []) {
+    if (r.status === "success" && r.result) out.push(r.result as Position);
+  }
+  return out;
+}
+
+/** Protocol-wide live numbers: insurance fund, open interest, notional routed. */
+export function useGlobalStats() {
+  const { data: insurance } = useReadContract({
+    ...VAULT,
+    functionName: "insuranceFund",
+    query: { refetchInterval: 10000 },
+  });
+  const all = useAllPositions();
 
   let openInterest = 0n;
   let volume = 0n;
   let openCount = 0;
-  for (const r of results ?? []) {
-    const p = r.result as Position | undefined;
-    if (!p) continue;
+  for (const p of all) {
     if (p.entryPrice6 > 0n) volume += p.sizeUsd6; // every position that ever filled
     if (Number(p.status) === 2) {
       openInterest += p.sizeUsd6;
@@ -102,9 +112,47 @@ export function useGlobalStats() {
 
   return {
     insurance: (insurance as bigint | undefined) ?? 0n,
-    positions: n,
+    positions: all.length,
     openInterest,
     volume,
     openCount,
   };
+}
+
+// Paper Perps League window (unix seconds). 0 = all-time, until dates are set.
+export const LEAGUE_START = 0;
+export const LEAGUE_END = 0;
+
+export type LeagueRow = {
+  owner: `0x${string}`;
+  realizedFxrp: bigint;
+  trades: number;
+  volumeUsd6: bigint;
+  liquidations: number;
+  open: number;
+};
+
+/** Rank every trader by realized PnL (FXRP). Liquidations count against you. */
+export function useLeaderboard(): LeagueRow[] {
+  const all = useAllPositions();
+  const by = new Map<string, LeagueRow>();
+  for (const p of all) {
+    if (p.entryPrice6 === 0n) continue; // never filled
+    const t = Number(p.openedAt);
+    if (LEAGUE_START && t < LEAGUE_START) continue;
+    if (LEAGUE_END && t > LEAGUE_END) continue;
+    const s = Number(p.status);
+    const row =
+      by.get(p.owner) ??
+      ({ owner: p.owner, realizedFxrp: 0n, trades: 0, volumeUsd6: 0n, liquidations: 0, open: 0 } as LeagueRow);
+    row.trades += 1;
+    row.volumeUsd6 += p.sizeUsd6;
+    if (s === 2 || s === 3) row.open += 1;
+    if (s === 4 || s === 5) row.realizedFxrp += p.pnlFxrp;
+    if (s === 5) row.liquidations += 1;
+    by.set(p.owner, row);
+  }
+  return [...by.values()].sort((a, b) =>
+    b.realizedFxrp > a.realizedFxrp ? 1 : b.realizedFxrp < a.realizedFxrp ? -1 : b.trades - a.trades
+  );
 }

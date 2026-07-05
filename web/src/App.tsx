@@ -10,6 +10,7 @@ import Positions from "./components/Positions";
 import RouteTrace from "./components/RouteTrace";
 import HowItWorks from "./components/HowItWorks";
 import Stats from "./components/Stats";
+import Leaderboard from "./components/Leaderboard";
 
 export default function App() {
   const [marketKey, setMarketKey] = useState<string>(DEPLOY.markets[0]?.key ?? "XRP");
@@ -58,6 +59,8 @@ export default function App() {
           <AccountPanel />
         </div>
       </div>
+
+      <Leaderboard />
 
       <div className="footer">
         <span>Torch is testnet software. Not audited. Not investment advice.</span>
