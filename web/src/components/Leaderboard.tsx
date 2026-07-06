@@ -7,7 +7,7 @@ const RANK = ["🔥", "🥈", "🥉"];
  * Reads straight from the vault; dark-palette and screenshot-friendly on
  * purpose (the league posts a leaderboard image twice a week). */
 export default function Leaderboard() {
-  const { rows, loading } = useLeaderboard();
+  const { rows, loading, preSeason } = useLeaderboard();
   const { address } = useAccount();
 
   return (
@@ -18,8 +18,9 @@ export default function Leaderboard() {
           🏆 {LEAGUE_PRIZE} · {LEAGUE_DATES}
         </span>
         <span className="league-sub">
-          Paper Perps League · Coston2 testnet · ranked by realized PnL (losses capped at posted
-          margin), liquidations held against you
+          {preSeason
+            ? `Warm-up · all-time standings shown until the season opens ${LEAGUE_DATES.split(" – ")[0]}. Trade now to practice.`
+            : "Paper Perps League · Coston2 testnet · ranked by realized PnL (losses capped at posted margin), liquidations held against you"}
         </span>
       </div>
 

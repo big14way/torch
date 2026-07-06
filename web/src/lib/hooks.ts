@@ -141,16 +141,23 @@ export type LeagueRow = {
  * open exposure is windowed by openedAt. Losses are capped at posted margin:
  * the contract stores unclamped mark PnL, but nobody can lose more than they
  * put up. */
-export function useLeaderboard(): { rows: LeagueRow[]; loading: boolean } {
+export function useLeaderboard(): { rows: LeagueRow[]; loading: boolean; preSeason: boolean } {
   const { positions: all, loading } = useAllPositions();
+  // Before the season opens, show all-time standings so the board is never empty
+  // for testing, the announcement screenshot, or the how-to video. Once the
+  // season starts, the window applies strictly.
+  const now = Math.floor(Date.now() / 1000);
+  const preSeason = LEAGUE_START > 0 && now < LEAGUE_START;
   const by = new Map<string, LeagueRow>();
   for (const p of all) {
     if (p.entryPrice6 === 0n) continue; // never filled
     const s = Number(p.status);
     const settled = s === 4 || s === 5;
     const t = Number(settled ? p.closedAt : p.openedAt);
-    if (LEAGUE_START && t < LEAGUE_START) continue;
-    if (LEAGUE_END && t > LEAGUE_END) continue;
+    if (!preSeason) {
+      if (LEAGUE_START && t < LEAGUE_START) continue;
+      if (LEAGUE_END && t > LEAGUE_END) continue;
+    }
     const row =
       by.get(p.owner) ??
       ({ owner: p.owner, realizedFxrp: 0n, trades: 0, volumeUsd6: 0n, liquidations: 0, open: 0 } as LeagueRow);
@@ -166,5 +173,5 @@ export function useLeaderboard(): { rows: LeagueRow[]; loading: boolean } {
   const rows = [...by.values()].sort((a, b) =>
     b.realizedFxrp > a.realizedFxrp ? 1 : b.realizedFxrp < a.realizedFxrp ? -1 : b.trades - a.trades
   );
-  return { rows, loading };
+  return { rows, loading, preSeason };
 }
