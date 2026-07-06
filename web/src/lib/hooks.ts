@@ -119,9 +119,12 @@ export function useGlobalStats() {
   };
 }
 
-// Paper Perps League window (unix seconds). 0 = all-time, until dates are set.
-export const LEAGUE_START = 0;
-export const LEAGUE_END = 0;
+// Paper Perps League window (unix seconds, UTC). 0 = all-time.
+// Season 1: Tue Jul 7 2026 00:00 UTC -> Tue Jul 21 2026 23:59:59 UTC.
+export const LEAGUE_START = 1783382400;
+export const LEAGUE_END = 1784678399;
+export const LEAGUE_DATES = "Jul 7 – Jul 21, 2026";
+export const LEAGUE_PRIZE = "$150 in FXRP";
 
 export type LeagueRow = {
   owner: `0x${string}`;

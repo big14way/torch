@@ -1,5 +1,5 @@
 import { useAccount } from "wagmi";
-import { fmtFxrp, fmtUsd6, useLeaderboard } from "../lib/hooks";
+import { fmtFxrp, fmtUsd6, useLeaderboard, LEAGUE_DATES, LEAGUE_PRIZE } from "../lib/hooks";
 
 const RANK = ["🔥", "🥈", "🥉"];
 
@@ -14,6 +14,9 @@ export default function Leaderboard() {
     <div className="card league">
       <div className="league-head">
         <h2>HALL OF FLAME</h2>
+        <span className="league-prize">
+          🏆 {LEAGUE_PRIZE} · {LEAGUE_DATES}
+        </span>
         <span className="league-sub">
           Paper Perps League · Coston2 testnet · ranked by realized PnL (losses capped at posted
           margin), liquidations held against you
