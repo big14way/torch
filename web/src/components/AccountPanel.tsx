@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useAccount, usePublicClient, useReadContract, useWriteContract } from "wagmi";
-import { maxUint256, parseUnits } from "viem";
+import { maxUint256, parseUnits, formatUnits } from "viem";
 import { DEPLOY, FXRP, VAULT } from "../lib/config";
 import { fmtFxrp, useFreeMargin } from "../lib/hooks";
 
@@ -24,7 +24,7 @@ export default function AccountPanel() {
     query: { enabled: !!address },
   }) as { data: bigint | undefined; refetch: () => void };
 
-  const [amountStr, setAmountStr] = useState("1000");
+  const [amountStr, setAmountStr] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
 
@@ -36,6 +36,12 @@ export default function AccountPanel() {
     }
   })();
 
+  // Guard against the #1 deposit failure: asking for more than you hold, which
+  // reverts deep in the token transfer (FAssetBalanceTooLow) with no clear UI.
+  const overWallet = walletBal !== undefined && amount > walletBal;
+  const overFree = free !== undefined && amount > free;
+  const setMax = (v: bigint | undefined) => v !== undefined && setAmountStr(formatUnits(v, 6));
+
   const run = async (label: string, fn: () => Promise<void>) => {
     setBusy(label);
     setNote(null);
@@ -43,7 +49,13 @@ export default function AccountPanel() {
       await fn();
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      setNote(msg.includes("User rejected") ? "Rejected in wallet." : msg.split("\n")[0].slice(0, 140));
+      setNote(
+        msg.includes("User rejected")
+          ? "Rejected in wallet."
+          : /FAssetBalanceTooLow|transfer amount exceeds balance/.test(msg)
+            ? "Not enough FXRP in your wallet for that amount."
+            : msg.split("\n")[0].slice(0, 140)
+      );
     } finally {
       setBusy(null);
     }
@@ -94,11 +106,15 @@ export default function AccountPanel() {
 
       <div className="balrow">
         <span className="k">Wallet {DEPLOY.mode === "local" ? "tFXRP" : "FXRP"}</span>
-        <span className="v">{walletBal !== undefined ? fmtFxrp(walletBal) : "..."}</span>
+        <span className="v maxable" title="Use as amount" onClick={() => setMax(walletBal)}>
+          {walletBal !== undefined ? fmtFxrp(walletBal) : "..."}
+        </span>
       </div>
       <div className="balrow">
         <span className="k">Free margin</span>
-        <span className="v">{free !== undefined ? fmtFxrp(free) : "..."}</span>
+        <span className="v maxable" title="Use as amount" onClick={() => setMax(free)}>
+          {free !== undefined ? fmtFxrp(free) : "..."}
+        </span>
       </div>
 
       <div className="inline-amount">
@@ -106,17 +122,26 @@ export default function AccountPanel() {
           aria-label="Amount in FXRP"
           type="text"
           inputMode="decimal"
+          placeholder="0.00 FXRP — tap a balance above to fill"
           value={amountStr}
           onChange={(e) => setAmountStr(e.target.value.replace(/[^0-9.]/g, ""))}
         />
       </div>
 
       <div className="acct-actions">
-        <button className="btn" disabled={!isConnected || !!busy || amount === 0n} onClick={deposit}>
-          {busy === "deposit" ? "Depositing..." : "Deposit"}
+        <button
+          className="btn"
+          disabled={!isConnected || !!busy || amount === 0n || overWallet}
+          onClick={deposit}
+        >
+          {busy === "deposit" ? "Depositing..." : overWallet ? "Not enough FXRP" : "Deposit"}
         </button>
-        <button className="btn ghost" disabled={!isConnected || !!busy || amount === 0n} onClick={withdraw}>
-          {busy === "withdraw" ? "Withdrawing..." : "Withdraw"}
+        <button
+          className="btn ghost"
+          disabled={!isConnected || !!busy || amount === 0n || overFree}
+          onClick={withdraw}
+        >
+          {busy === "withdraw" ? "Withdrawing..." : overFree ? "Exceeds free margin" : "Withdraw"}
         </button>
         {DEPLOY.mode === "local" && (
           <button className="btn primary wide" disabled={!isConnected || !!busy} onClick={faucet}>
@@ -130,10 +155,20 @@ export default function AccountPanel() {
         )}
       </div>
 
-      {DEPLOY.mode === "coston2" && (
+      {overWallet && walletBal !== undefined && (
+        <div className="notice error">
+          You only have {fmtFxrp(walletBal)} FXRP in your wallet. Tap the balance above to deposit
+          all of it, or enter less.
+        </div>
+      )}
+
+      {DEPLOY.mode === "coston2" && !overWallet && (
         <div className="notice">
-          In the faucet, claim C2FLR for gas, then pick <b>FTestXRP</b> in the token dropdown for
-          margin. Deposit it here once it lands.
+          Need FXRP? Claim C2FLR for gas + <b>FTestXRP</b> from the{" "}
+          <a href="https://faucet.flare.network" target="_blank" rel="noreferrer">
+            Flare faucet
+          </a>
+          , then deposit it here.
         </div>
       )}
 

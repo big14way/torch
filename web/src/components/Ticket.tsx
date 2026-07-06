@@ -15,7 +15,7 @@ export default function Ticket({ marketKey, mark }: { marketKey: string; mark: b
   const publicClient = usePublicClient();
 
   const [isLong, setIsLong] = useState(true);
-  const [marginStr, setMarginStr] = useState("50");
+  const [marginStr, setMarginStr] = useState("10"); // matches one faucet claim (~10 FXRP)
   const [levX10, setLevX10] = useState(30); // 3x default
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
