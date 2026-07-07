@@ -11,6 +11,7 @@ import RouteTrace from "./components/RouteTrace";
 import HowItWorks from "./components/HowItWorks";
 import Stats from "./components/Stats";
 import Leaderboard from "./components/Leaderboard";
+import FeedbackNudge from "./components/FeedbackNudge";
 
 export default function App() {
   const [marketKey, setMarketKey] = useState<string>(DEPLOY.markets[0]?.key ?? "XRP");
@@ -26,6 +27,8 @@ export default function App() {
       <Header marketKey={marketKey} mark={mark as bigint | undefined} onHow={() => setShowHow(true)} />
 
       <Stats />
+
+      <FeedbackNudge positions={positions} />
 
       <div className="grid">
         <div className="area-chart card">

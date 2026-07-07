@@ -36,7 +36,7 @@ export const FDC = fdcJson as {
 // field, click "Get link", and paste that URL below. The app swaps WALLET for
 // the connected wallet so testers never mistype the address they'll be paid to.
 export const FEEDBACK_FORM_PREFILL =
-  "https://docs.google.com/forms/d/e/REPLACE_ME/viewform?usp=pp_url&entry.0=WALLET";
+  "https://docs.google.com/forms/d/e/1FAIpQLScZiBLi9YJ5wD5mOjb9bS3_Hs2TVIgzz27dOTOW5b0TMhSIwA/viewform?usp=pp_url&entry.1182540619=WALLET";
 export const FEEDBACK_CONFIGURED = !FEEDBACK_FORM_PREFILL.includes("REPLACE_ME");
 export function feedbackUrl(address?: `0x${string}`): string {
   if (address) return FEEDBACK_FORM_PREFILL.replace("WALLET", address);
