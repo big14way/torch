@@ -31,6 +31,18 @@ export const FDC = fdcJson as {
   positionAttest?: { positionId: string; oid: string; tx: `0x${string}` };
 };
 
+// Feedback form (Google Form). To wire it: create the form, open its ⋮ menu →
+// "Get pre-filled link", type the literal word WALLET into the wallet-address
+// field, click "Get link", and paste that URL below. The app swaps WALLET for
+// the connected wallet so testers never mistype the address they'll be paid to.
+export const FEEDBACK_FORM_PREFILL =
+  "https://docs.google.com/forms/d/e/REPLACE_ME/viewform?usp=pp_url&entry.0=WALLET";
+export const FEEDBACK_CONFIGURED = !FEEDBACK_FORM_PREFILL.includes("REPLACE_ME");
+export function feedbackUrl(address?: `0x${string}`): string {
+  if (address) return FEEDBACK_FORM_PREFILL.replace("WALLET", address);
+  return FEEDBACK_FORM_PREFILL.split("?")[0]; // blank form when no wallet is connected
+}
+
 export const localhostChain = defineChain({
   id: 31337,
   name: "Localhost",

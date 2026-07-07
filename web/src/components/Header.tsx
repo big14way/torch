@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useAccount, useConnect, useDisconnect, useSwitchChain } from "wagmi";
-import { ACTIVE_CHAIN, DEPLOY } from "../lib/config";
+import { ACTIVE_CHAIN, DEPLOY, FEEDBACK_CONFIGURED, feedbackUrl } from "../lib/config";
 import { fmtPx, useXrpPrice } from "../lib/hooks";
 
 function Flame() {
@@ -81,6 +81,11 @@ export default function Header({
       <div className="spacer" />
 
       <button className="btn ghost sm" onClick={onHow}>How it works</button>
+      {FEEDBACK_CONFIGURED && (
+        <a className="btn ghost sm" href={feedbackUrl(address)} target="_blank" rel="noreferrer">
+          Feedback
+        </a>
+      )}
 
       {wrongNet ? (
         <button className="btn primary" onClick={() => switchChain({ chainId: ACTIVE_CHAIN.id })}>
