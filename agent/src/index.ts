@@ -173,7 +173,12 @@ async function main() {
   const finalized = new Set<string>();
   console.log(`  Watching positions every ${POLL_MS / 1000}s...\n`);
 
-  setInterval(async () => {
+  // Single-flight loop: schedule the next cycle only after this one finishes,
+  // so cycles never overlap and stack RPC reads on top of each other. The
+  // launch-surge stall came from setInterval firing every 3s regardless of
+  // whether the prior (now slow, sequential) cycle had returned, which
+  // multiplied reads until the public RPC 429'd and the loop wedged.
+  const runLoop = async () => {
     try {
       const count = (await pub.readContract({
         ...vault,
@@ -260,8 +265,11 @@ async function main() {
       }
     } catch (e) {
       console.error("loop error:", (e as Error).message);
+    } finally {
+      setTimeout(runLoop, POLL_MS);
     }
-  }, POLL_MS);
+  };
+  runLoop();
 }
 
 function fmt6(x: bigint): string {
