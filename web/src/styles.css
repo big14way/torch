@@ -144,9 +144,14 @@ a:hover { text-decoration: underline; }
 
 @media (max-width: 980px) {
   .grid {
-    grid-template-columns: 1fr;
+    /* minmax(0, 1fr), not 1fr: 1fr = minmax(auto,1fr), which forbids items
+       shrinking below their content min-width, so the chart canvas widened the
+       whole column and clipped everything on mobile. */
+    grid-template-columns: minmax(0, 1fr);
     grid-template-areas: "ticket" "chart" "rail" "positions";
   }
+  /* grid/flex children default to min-width:auto; zero it so they can shrink */
+  .area-chart, .area-ticket, .area-positions, .area-rail { min-width: 0; }
 }
 
 .card {
@@ -355,3 +360,22 @@ a:hover { text-decoration: underline; }
 }
 .fb-nudge b { color: var(--bone); }
 .fb-nudge .fb-actions { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
+
+/* ---------------------------------------------------- mobile hardening */
+html, body { overflow-x: hidden; max-width: 100%; }
+.chartbox { max-width: 100%; }
+/* the header ticker and protocol stats can shrink and wrap on small screens */
+.statstrip { flex-wrap: wrap; min-width: 0; }
+@media (max-width: 560px) {
+  .wordmark .tagline { display: none; }        /* decorative; wordmark carries it */
+  .app { padding-left: 14px; padding-right: 14px; }
+  .header { gap: 12px; }
+  .card { padding: 14px; }
+}
+
+@media (max-width: 480px) {
+  /* leaderboard: drop the least-critical column (Volume) so the board fits the
+     phone width without needing horizontal scroll. Rank/Trader/PnL/Trades/Liqs stay. */
+  .league .table th:nth-child(5), .league .table td:nth-child(5) { display: none; }
+  .league .table th, .league .table td { padding: 8px 8px; }
+}
