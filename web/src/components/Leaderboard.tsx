@@ -1,7 +1,7 @@
 import { useAccount } from "wagmi";
 import { fmtFxrp, fmtUsd6, useLeaderboard, LEAGUE_DATES, LEAGUE_PRIZE } from "../lib/hooks";
 
-const RANK = ["🔥", "🥈", "🥉"];
+const RANK = ["#1", "#2", "#3"];
 
 /** Paper Perps League standings, ranked by realized PnL in FXRP.
  * Reads straight from the vault; dark-palette and screenshot-friendly on
@@ -15,7 +15,7 @@ export default function Leaderboard() {
       <div className="league-head">
         <h2>HALL OF FLAME</h2>
         <span className="league-prize">
-          🏆 {LEAGUE_PRIZE} · {LEAGUE_DATES}
+          {LEAGUE_PRIZE} · {LEAGUE_DATES}
         </span>
         <span className="league-sub">
           {preSeason

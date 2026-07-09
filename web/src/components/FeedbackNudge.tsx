@@ -32,8 +32,8 @@ export default function FeedbackNudge({ positions }: { positions: Position[] | u
   return (
     <div className="fb-nudge">
       <span>
-        🔦 You ran a trade on Torch. How did it go? <b>60 seconds</b> of feedback genuinely shapes
-        what ships next — and links your wallet for the league.
+        You ran a trade on Torch. How did it go? <b>60 seconds</b> of feedback genuinely shapes
+        what ships next, and links your wallet for the league.
       </span>
       <span className="fb-actions">
         <a
