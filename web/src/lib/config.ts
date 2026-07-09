@@ -58,6 +58,13 @@ export const coston2 = defineChain({
   blockExplorers: {
     default: { name: "Coston2 Explorer", url: "https://coston2-explorer.flare.network" },
   },
+  // Multicall3 (canonical address, verified deployed on Coston2). Without it,
+  // reading N positions fires N separate eth_calls every poll, which
+  // rate-limits the public RPC under load and punches failure-holes in the
+  // dashboard stats. With it, the whole batch is one aggregated call.
+  contracts: {
+    multicall3: { address: "0xcA11bde05977b3631167028862bE2a173976CA11" },
+  },
   testnet: true,
 });
 

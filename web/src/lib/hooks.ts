@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import { useReadContract, useReadContracts } from "wagmi";
 import { keepPreviousData } from "@tanstack/react-query";
 import { hexToString } from "viem";
@@ -88,11 +89,21 @@ export function useAllPositions(): { positions: Position[]; loading: boolean } {
     // position changes the query key) so derived stats don't collapse to 0.
     query: { enabled: n > 0, refetchInterval: 10000, placeholderData: keepPreviousData },
   });
+  // Merge fresh reads over the last good snapshot. Under public-RPC rate
+  // limits, individual calls inside the batch can fail while the query itself
+  // "succeeds" — a failed read must show the last-known position, never
+  // subtract it from the stats (this was the dashboard flashing to 0).
+  const cacheRef = useRef<Map<number, Position>>(new Map());
+  const cache = cacheRef.current;
+  (results ?? []).forEach((r, i) => {
+    if (r.status === "success" && r.result) cache.set(i, r.result as Position);
+  });
   const out: Position[] = [];
-  for (const r of results ?? []) {
-    if (r.status === "success" && r.result) out.push(r.result as Position);
+  for (let i = 0; i < n; i++) {
+    const p = cache.get(i);
+    if (p) out.push(p);
   }
-  return { positions: out, loading: count === undefined || (n > 0 && results === undefined) };
+  return { positions: out, loading: count === undefined || (n > 0 && out.length === 0) };
 }
 
 /** Protocol-wide live numbers: insurance fund, open interest, notional routed. */
