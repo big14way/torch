@@ -1,6 +1,6 @@
 import { http, createConfig } from "wagmi";
 import { defineChain, type Abi } from "viem";
-import { injected } from "wagmi/connectors";
+import { injected, walletConnect } from "wagmi/connectors";
 import deployments from "../generated/deployments.json";
 import vaultAbiJson from "../generated/TorchVault.abi.json";
 import erc20AbiJson from "../generated/ERC20.abi.json";
@@ -63,9 +63,32 @@ export const coston2 = defineChain({
 
 export const ACTIVE_CHAIN = DEPLOY.chainId === 114 ? coston2 : localhostChain;
 
+// WalletConnect Cloud project id — a PUBLIC identifier (not a secret), safe in
+// the bundle. Create one free at https://cloud.reown.com and paste it here to
+// enable the mobile wallet picker (MetaMask mobile, Bifrost, Trust, ...).
+// Empty string = WalletConnect disabled; mobile browsers fall back to the
+// MetaMask deep link in the header.
+export const WC_PROJECT_ID = "";
+
 export const wagmiConfig = createConfig({
   chains: [ACTIVE_CHAIN],
-  connectors: [injected()],
+  connectors: [
+    injected(),
+    ...(WC_PROJECT_ID
+      ? [
+          walletConnect({
+            projectId: WC_PROJECT_ID,
+            showQrModal: true,
+            metadata: {
+              name: "Torch",
+              description: "XRP-margined perps on Flare",
+              url: "https://usetorch.vercel.app",
+              icons: [],
+            },
+          }),
+        ]
+      : []),
+  ],
   transports: {
     [localhostChain.id]: http("http://127.0.0.1:8545"),
     [coston2.id]: http("https://coston2-api.flare.network/ext/C/rpc"),

@@ -55,6 +55,21 @@ export default function Header({
 
   const wrongNet = isConnected && chainId !== ACTIVE_CHAIN.id;
 
+  // Mobile browsers have no injected provider (that only exists on desktop
+  // extensions and inside wallet in-app browsers). Prefer injected when it's
+  // there, else WalletConnect's wallet picker, else deep-link into MetaMask's
+  // in-app browser so phone users aren't dead-ended.
+  const hasInjected =
+    typeof window !== "undefined" && !!(window as { ethereum?: unknown }).ethereum;
+  const wcConnector = connectors.find((c) => c.id === "walletConnect");
+  const connectWith = hasInjected
+    ? (connectors.find((c) => c.id === "injected") ?? connectors[0])
+    : (wcConnector ?? connectors[0]);
+  const metamaskDeepLink =
+    typeof window !== "undefined"
+      ? `https://metamask.app.link/dapp/${window.location.host}${window.location.pathname}`
+      : "https://metamask.app.link/dapp/usetorch.vercel.app";
+
   return (
     <header className="header">
       <div className="wordmark">
@@ -101,14 +116,18 @@ export default function Header({
             Disconnect
           </button>
         </>
-      ) : (
+      ) : hasInjected || wcConnector ? (
         <button
           className="btn primary"
-          disabled={isPending || connectors.length === 0}
-          onClick={() => connect({ connector: connectors[0] })}
+          disabled={isPending || !connectWith}
+          onClick={() => connectWith && connect({ connector: connectWith })}
         >
           {isPending ? "Connecting..." : "Connect wallet"}
         </button>
+      ) : (
+        <a className="btn primary" href={metamaskDeepLink} style={{ textAlign: "center" }}>
+          Open in MetaMask
+        </a>
       )}
     </header>
   );
