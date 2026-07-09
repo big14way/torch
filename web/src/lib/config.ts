@@ -68,7 +68,7 @@ export const ACTIVE_CHAIN = DEPLOY.chainId === 114 ? coston2 : localhostChain;
 // enable the mobile wallet picker (MetaMask mobile, Bifrost, Trust, ...).
 // Empty string = WalletConnect disabled; mobile browsers fall back to the
 // MetaMask deep link in the header.
-export const WC_PROJECT_ID = "";
+export const WC_PROJECT_ID = "1eebe528ca0ce94a99ceaa2e915058d7";
 
 export const wagmiConfig = createConfig({
   chains: [ACTIVE_CHAIN],
