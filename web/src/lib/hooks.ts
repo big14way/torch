@@ -1,4 +1,5 @@
 import { useReadContract, useReadContracts } from "wagmi";
+import { keepPreviousData } from "@tanstack/react-query";
 import { hexToString } from "viem";
 import { VAULT, DEPLOY, type Position } from "./config";
 
@@ -72,7 +73,9 @@ export function useAllPositions(): { positions: Position[]; loading: boolean } {
   const { data: count } = useReadContract({
     ...VAULT,
     functionName: "positionsCount",
-    query: { refetchInterval: 10000 },
+    // keepPreviousData: hold the last value on screen during the 10s refetch
+    // (and when the position count changes) so the dashboard never flashes to 0.
+    query: { refetchInterval: 10000, placeholderData: keepPreviousData },
   });
   const n = count !== undefined ? Number(count) : 0;
   const { data: results } = useReadContracts({
@@ -81,7 +84,9 @@ export function useAllPositions(): { positions: Position[]; loading: boolean } {
       functionName: "getPosition",
       args: [BigInt(i)],
     })),
-    query: { enabled: n > 0, refetchInterval: 10000 },
+    // keep the prior batch visible while a longer/newer batch loads (a new
+    // position changes the query key) so derived stats don't collapse to 0.
+    query: { enabled: n > 0, refetchInterval: 10000, placeholderData: keepPreviousData },
   });
   const out: Position[] = [];
   for (const r of results ?? []) {
@@ -95,7 +100,9 @@ export function useGlobalStats() {
   const { data: insurance } = useReadContract({
     ...VAULT,
     functionName: "insuranceFund",
-    query: { refetchInterval: 10000 },
+    // keepPreviousData: hold the last value on screen during the 10s refetch
+    // (and when the position count changes) so the dashboard never flashes to 0.
+    query: { refetchInterval: 10000, placeholderData: keepPreviousData },
   });
   const { positions: all } = useAllPositions();
 
