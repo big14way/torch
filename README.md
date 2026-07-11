@@ -24,7 +24,21 @@ The XRP community holds one of the largest idle asset bases in crypto, and today
    |  withdraw     <----    PnL settled in FXRP <--------------- |  <----------------    |
 ```
 
-Trust model, stated honestly. This is v0, a verifiable operator, not yet a trustless bridge:
+## What settles where
+
+The question everyone asks: if Hyperliquid settles trades on its own book, what is Flare doing? The answer is that Torch has two legs, settling in two different places for two different parties.
+
+**The user's trade settles on Flare. Always.** You deposit FXRP into the vault and trade against it: entry, exit, PnL, and liquidations are computed and settled by the TorchVault contract on Flare, in FXRP, priced against FTSOv2. You never hold a Hyperliquid account, never touch USDC, never leave Flare. Torch rebuilds the whole market structure on Flare — request, fill, close, liquidate, margin, maintenance, insurance — everything except the orderbook.
+
+**Hyperliquid is where the house hedges.** When you go long, the vault is your counterparty; unhedged, the insurance fund would carry every trader's PnL. So the executor mirrors positions onto Hyperliquid's book to keep the operator's exposure flat — trader wins are recouped from the hedge, and the hedge fills settle in USDC on Hyperliquid because that is the operator's risk book, not yours.
+
+**FTSO is the glue between the legs.** The executor's reported fill must sit within 1.5% of the live FTSO feed or the contract reverts, which both stops the operator from inventing prices and forces the hedge leg to stay coherent with the Flare settlement price. Any drift between the venues inside that band is basis risk carried by the operator, never by the user. FDC then proves after the fact that the hedge fills really happened on Hyperliquid, bound to the exact position.
+
+In short: Flare is the market, FTSO is the settlement judge, FDC is the audit, and Hyperliquid is borrowed liquidity. (In the current Coston2 deployment the enclave fills at the FTSO mark itself, so today the live loop runs entirely on Flare; the Hyperliquid hedge leg is proven separately on testnet and slots in when the enclave gains exchange egress.)
+
+## Trust model
+
+Stated honestly. This is v0, a verifiable operator, not yet a trustless bridge:
 
 1. Every price the executor reports is checked on-chain against Flare FTSOv2 and reverts if it sits outside a 1.5% band. The operator cannot invent prices.
 2. The Hyperliquid key the agent holds is an API wallet, which can trade but can never withdraw. Compromising the agent does not give custody.
