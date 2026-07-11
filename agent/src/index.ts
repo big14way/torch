@@ -181,6 +181,14 @@ async function main() {
   // future polls so per-loop RPC load stays proportional to ACTIVE positions,
   // not the ever-growing total (public RPCs 429 otherwise).
   const finalized = new Set<string>();
+
+  // Read the real maintenance margin from the vault instead of assuming the
+  // 500 bps default — the owner can change it, and a stale hardcode would
+  // make the agent fire liquidations the contract then rejects (or miss them).
+  const maintenanceBps = BigInt(
+    (await pub.readContract({ ...vault, functionName: "maintenanceMarginBps" })) as number
+  );
+  console.log(`  Maintenance margin: ${Number(maintenanceBps) / 100}% (read from vault)`);
   console.log(`  Watching positions every ${POLL_MS / 1000}s...\n`);
 
   // Single-flight loop: schedule the next cycle only after this one finishes,
@@ -210,15 +218,30 @@ async function main() {
           inFlight.add(idStr);
           try {
             const fill = await exchange.open(key, p.isLong, p.sizeUsd6);
-            const hash = await wallet.writeContract({
-              ...vault,
-              functionName: "confirmFill",
-              args: [p.id, fill.price6, fill.oid],
-              gas: TX_GAS,
-              chain: null,
-            });
-            await pub.waitForTransactionReceipt({ hash }); // hold the lock until it mines
-            log(p.id, `OPEN  ${key} ${p.isLong ? "long" : "short"} @ ${fmt6(fill.price6)} (${fill.venue ?? exchange.name}) tx ${hash.slice(0, 10)}`);
+            try {
+              const hash = await wallet.writeContract({
+                ...vault,
+                functionName: "confirmFill",
+                args: [p.id, fill.price6, fill.oid],
+                gas: TX_GAS,
+                chain: null,
+              });
+              await pub.waitForTransactionReceipt({ hash }); // hold the lock until it mines
+              log(p.id, `OPEN  ${key} ${p.isLong ? "long" : "short"} @ ${fmt6(fill.price6)} (${fill.venue ?? exchange.name}) tx ${hash.slice(0, 10)}`);
+            } catch (confirmErr) {
+              // The exchange filled but the on-chain confirm failed (band
+              // revert, gas, RPC): unwind the real fill so no unbacked
+              // exposure leaks on the hedge book. Mock fills (oid 0) skip.
+              if (fill.oid !== 0n) {
+                try {
+                  await exchange.close(key, p.isLong, p.sizeUsd6);
+                  log(p.id, `unwound exchange fill after confirm failure`);
+                } catch (unwindErr) {
+                  log(p.id, `UNWIND FAILED, manual check needed: ${(unwindErr as Error).message}`);
+                }
+              }
+              throw confirmErr;
+            }
           } catch (e) {
             log(p.id, `open failed: ${(e as Error).message}`);
           } finally {
@@ -246,24 +269,34 @@ async function main() {
           }
         } else if (p.status === S.Open) {
           // Liquidation watch: replicate the contract check off-chain, then
-          // let the contract re-verify on-chain.
+          // let the contract re-verify on-chain. Same in-flight guard as
+          // fills — without it, polls could double-fire liquidate before the
+          // first tx mines.
+          const idStr = p.id.toString();
+          if (inFlight.has(idStr)) continue;
           try {
             const equity = (await pub.readContract({
               ...vault,
               functionName: "equityUsd6",
               args: [p.id],
             })) as bigint;
-            const maintenance = (p.sizeUsd6 * 500n) / 10_000n; // 5% default
+            const maintenance = (p.sizeUsd6 * maintenanceBps) / 10_000n;
             if (equity <= maintenance) {
-              const mark = await markPrice6(key);
-              const hash = await wallet.writeContract({
-                ...vault,
-                functionName: "liquidate",
-                args: [p.id, mark],
-                gas: TX_GAS,
-                chain: null,
-              });
-              log(p.id, `LIQUIDATE ${key} @ ${fmt6(mark)} equity ${fmt6(equity)} tx ${hash.slice(0, 10)}`);
+              inFlight.add(idStr);
+              try {
+                const mark = await markPrice6(key);
+                const hash = await wallet.writeContract({
+                  ...vault,
+                  functionName: "liquidate",
+                  args: [p.id, mark],
+                  gas: TX_GAS,
+                  chain: null,
+                });
+                await pub.waitForTransactionReceipt({ hash }); // hold until mined
+                log(p.id, `LIQUIDATE ${key} @ ${fmt6(mark)} equity ${fmt6(equity)} tx ${hash.slice(0, 10)}`);
+              } finally {
+                inFlight.delete(idStr);
+              }
             }
           } catch (e) {
             // NotLiquidatable races are expected; stay quiet unless verbose
