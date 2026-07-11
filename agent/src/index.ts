@@ -124,12 +124,22 @@ async function main() {
 
   let exchange: Exchange;
   if (MODE === "testnet") {
+    // Builder code: Torch's revenue rail on routed Hyperliquid flow. The venue
+    // pays HL_BUILDER_ADDRESS f tenths-of-a-bp per fill (default 50 = 5 bps,
+    // perp cap 100 = 10 bps). Requires a one-time approveBuilderFee by the
+    // trading account.
+    const builderAddr = process.env.HL_BUILDER_ADDRESS as `0x${string}` | undefined;
     exchange = new HyperliquidTestnet(
       process.env.HL_API_URL || "https://api.hyperliquid-testnet.xyz",
       process.env.HL_PRIVATE_KEY || "",
-      markPrice6 // FTSO-mark fallback for symbols HL testnet does not list (e.g. XRP)
+      markPrice6, // FTSO-mark fallback for symbols HL testnet does not list (e.g. XRP)
+      builderAddr
+        ? { address: builderAddr, feeTenthBps: Number(process.env.HL_BUILDER_FEE_TENTH_BPS || 50) }
+        : undefined
     );
-    console.log("  Routing orders to Hyperliquid testnet. Smoke-test before demos.");
+    console.log(
+      `  Routing orders to Hyperliquid testnet${builderAddr ? ` (builder code ${builderAddr.slice(0, 8)}…)` : ""}. Smoke-test before demos.`
+    );
   } else {
     exchange = new MockExchange(markPrice6);
     console.log("  Mock execution: fills at the FTSO mark. Full local loop.");

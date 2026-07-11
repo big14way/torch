@@ -62,8 +62,19 @@ export class HyperliquidTestnet implements Exchange {
     private privateKey: string,
     // Fallback mark for symbols HL testnet does not list (e.g. XRP): fill at
     // the on-chain FTSO mark instead of erroring, so those markets stay usable.
-    private markFallback?: (market: string) => Promise<bigint>
+    private markFallback?: (market: string) => Promise<bigint>,
+    // Hyperliquid builder code: tags every routed order so the venue pays the
+    // builder (Torch's treasury) a fee per fill, on-chain, automatically.
+    // f is in TENTHS of a basis point (f=50 -> 5 bps; perp cap is f=100 = 10 bps).
+    // The paying account must approve it once via approveBuilderFee.
+    private builder?: { address: `0x${string}`; feeTenthBps: number }
   ) {}
+
+  /** The builder field for an order payload, when configured. */
+  private builderField(): { b: `0x${string}`; f: number } | undefined {
+    if (!this.builder) return undefined;
+    return { b: this.builder.address, f: this.builder.feeTenthBps };
+  }
 
   private async client(): Promise<any> {
     if (this.sdkClient) return this.sdkClient;
@@ -126,6 +137,7 @@ export class HyperliquidTestnet implements Exchange {
         },
       ],
       grouping: "na",
+      ...(this.builderField() ? { builder: this.builderField() } : {}),
     });
     return this.readFill(result, "open");
   }
@@ -149,6 +161,7 @@ export class HyperliquidTestnet implements Exchange {
         },
       ],
       grouping: "na",
+      ...(this.builderField() ? { builder: this.builderField() } : {}),
     });
     return this.readFill(result, "close");
   }

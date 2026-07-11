@@ -36,6 +36,16 @@ The question everyone asks: if Hyperliquid settles trades on its own book, what 
 
 In short: Flare is the market, FTSO is the settlement judge, FDC is the audit, and Hyperliquid is borrowed liquidity. (In the current Coston2 deployment the enclave fills at the FTSO mark itself, so today the live loop runs entirely on Flare; the Hyperliquid hedge leg is proven separately on testnet and slots in when the enclave gains exchange egress.)
 
+## How Torch makes money
+
+Two rails, both already in the code, stated with the same honesty as everything else:
+
+1. **Vault fees, live on-chain today.** The vault charges **8 bps on open, 8 bps on close** (0.08% of notional each way) plus **100 bps on liquidations**, paid in FXRP straight to the treasury address — see `openFeeBps` / `closeFeeBps` / `liquidationFeeBps` in [TorchVault.sol](contracts/contracts/TorchVault.sol). This is the primary revenue line, and it scales with exactly one thing: FXRP margin volume. Torch's revenue metric *is* Flare's FXRP-adoption metric.
+
+2. **Hyperliquid builder codes, wired into the adapter.** Every order the executor routes carries a builder tag (`HL_BUILDER_ADDRESS`, fee in tenths of a bp, perp cap 10 bps) — Hyperliquid's native, on-chain revenue rail for order-flow routers, collected by the venue automatically per fill. Honest footnote: in the current architecture the only Hyperliquid flow is the operator's own hedge book, where a builder fee is circular; this rail earns real third-party revenue as Torch's routing footprint grows beyond the house book (e.g. direct-account trading through the Torch terminal). It's wired now so the rail is proven, not theoretical.
+
+No token, no yield promises. Fees on real flow, denominated in the asset the community already holds.
+
 ## Trust model
 
 Stated honestly. This is v0, a verifiable operator, not yet a trustless bridge:
