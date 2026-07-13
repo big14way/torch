@@ -14,6 +14,7 @@
     "deploy:fdc": "hardhat run scripts/deployFdcConsumer.ts --network coston2",
     "fdc:attest": "hardhat run scripts/fdcAttest.ts --network coston2",
     "preflight": "hardhat run scripts/preflight.ts --network coston2",
+    "list:markets": "hardhat run scripts/listNewMarkets.ts --network coston2",
     "smoke": "hardhat run scripts/smoke.ts --network localhost"
   },
   "devDependencies": {

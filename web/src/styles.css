@@ -169,7 +169,7 @@ a:hover { text-decoration: underline; }
 }
 
 /* ------------------------------------------------------------------ chart */
-.markettabs { display: flex; gap: 6px; margin-bottom: 10px; }
+.markettabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
 .markettabs button {
   font-family: var(--font-ui); font-weight: 600; font-size: 12px;
   background: transparent; color: var(--smoke);

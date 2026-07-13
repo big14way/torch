@@ -51,7 +51,14 @@ export class MockExchange implements Exchange {
 
 // ---------------------------------------------------------------------------
 
-const HL_COIN: Record<string, string> = { BTC: "BTC", ETH: "ETH", XRP: "XRP" };
+const HL_COIN: Record<string, string> = {
+  BTC: "BTC",
+  ETH: "ETH",
+  XRP: "XRP",
+  HYPE: "HYPE",
+  SOL: "SOL",
+  DOGE: "DOGE",
+};
 
 export class HyperliquidTestnet implements Exchange {
   name = "hyperliquid-testnet";
