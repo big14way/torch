@@ -22,8 +22,9 @@ These are done in code; they list/ship the next time the enclave is upgraded (so
 - **FDC on every settlement**, not spot-checked — each fill provably bound on-chain.
 
 ## Horizon
+- **Port the executor to a Flare Confidential Extension (FCE).** After guidance from the Flare team, this replaces "wait for PMWs" as the decentralization path available now: the executor runs on Flare's own confidential-compute stack, its code hash pinned on-chain in the TeeExtensionRegistry, instructions signed by Flare's data providers, and the signing key backed across providers so no single operator (including us) can stall or drain it. Reference: [flare-foundation/fce-orderbook](https://github.com/flare-foundation/fce-orderbook).
 - **Mainnet pilot** with FXRP margin, tight caps, real Hyperliquid execution with a builder code attached.
-- **Decentralize the executor**: retire the single app-run enclave for Flare Protocol Managed Wallets (a protocol-run quorum of TEEs) when Flare Confidential Compute ships on Songbird. The vault contract does not change — it only ever knew an executor address.
+- **Protocol Managed Wallets** remain the endgame once they ship: the executor role moves to the protocol quorum entirely. The vault contract does not change — it only ever knew an executor address.
 
 ---
 *Testnet software. Not audited. Not investment advice. Roadmap items are intentions, not commitments or dates.*
