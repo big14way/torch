@@ -16,6 +16,6 @@ services:
       ENCLAVE_KEYGEN: "1"
       DSTACK: "1"
       EXECUTION_MODE: testnet
-      RPC_URL: https://coston2-api.flare.network/ext/C/rpc
+      RPC_URL: https://coston2.enosys.global/ext/C/rpc
       HL_API_URL: https://api.hyperliquid-testnet.xyz
       HL_PRIVATE_KEY: ${HL_PRIVATE_KEY}
