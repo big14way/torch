@@ -57,8 +57,13 @@ async function main() {
   console.log("\n== 2. Gas balances ==");
   const execBal = await ethers.provider.getBalance(chainExecutor);
   const signerBal = await ethers.provider.getBalance(signer.address);
-  (execBal >= ethers.parseEther("2") ? ok : fail)(
-    `executor C2FLR: ${ethers.formatEther(execBal)} (needs >= 2 to confirm fills)`
+  // The agent sends txs with a hardcoded 3M gas limit, and viem refuses to
+  // send unless balance >= gasLimit * gasPrice — ~4.2 C2FLR at current fees
+  // (July 2026 outage: balance 4.1 silently blocked every fill/close).
+  const gasPrice = (await ethers.provider.getFeeData()).gasPrice ?? 0n;
+  const prefund = (3_000_000n * gasPrice * 12n) / 10n; // 20% headroom
+  (execBal >= prefund ? ok : fail)(
+    `executor C2FLR: ${ethers.formatEther(execBal)} (agent needs >= ${ethers.formatEther(prefund)} to send a 3M-gas tx)`
   );
   (signerBal >= ethers.parseEther("1") ? ok : warn)(`deployer C2FLR: ${ethers.formatEther(signerBal)}`);
 
