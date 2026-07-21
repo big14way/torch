@@ -138,11 +138,26 @@ export function useGlobalStats() {
 }
 
 // Paper Perps League window (unix seconds, UTC). 0 = all-time.
-// Season 1: Tue Jul 7 2026 00:00 UTC -> Tue Jul 21 2026 23:59:59 UTC.
-export const LEAGUE_START = 1783382400;
-export const LEAGUE_END = 1784678399;
-export const LEAGUE_DATES = "Jul 7 – Jul 21, 2026";
-export const LEAGUE_PRIZE = "$150 in FXRP";
+// Season 1: Jul 7 00:00 -> Jul 21 23:59:59 UTC (final board archived in the S1 wrap thread).
+// Season 2: Wed Jul 22 2026 00:00 UTC -> Wed Aug 5 2026 23:59:59 UTC.
+export const LEAGUE_SEASON = "Season 2";
+export const LEAGUE_START = 1784678400;
+export const LEAGUE_END = 1785974399;
+export const LEAGUE_DATES = "Jul 22 – Aug 5, 2026";
+export const LEAGUE_PRIZE = "$150 in FXRP · top 10 paid";
+
+// House wallets stay ON the board during testnet — they're the founder's live
+// smoke test for the leaderboard (if the board misbehaves and testers are quiet,
+// trading from one of these shows the problem immediately). They are skipped at
+// payout time, and get filtered from the board entirely at mainnet.
+export const HOUSE_WALLETS = new Set(
+  [
+    "0x3C343AD077983371b29fee386bdBC8a92E934C51", // deploy executor / treasury
+    "0x9F6c5F65f8dA4fAe06a9fB5096C6745194D45166", // enclave executor (current)
+    "0x9c5B9F8DF63404bBb0B8Eaa51eF657daBEE4125c", // enclave executor (retired)
+    "0x208B2660e5F62CDca21869b389c5aF9E7f0faE89", // founder demo wallet
+  ].map((a) => a.toLowerCase())
+);
 
 export type LeagueRow = {
   owner: `0x${string}`;

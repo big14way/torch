@@ -1,5 +1,5 @@
-import { http, createConfig } from "wagmi";
-import { defineChain, type Abi } from "viem";
+import { http, fallback, createConfig } from "wagmi";
+import { defineChain, type Abi, type Transport } from "viem";
 import { injected, walletConnect } from "wagmi/connectors";
 import deployments from "../generated/deployments.json";
 import vaultAbiJson from "../generated/TorchVault.abi.json";
@@ -54,7 +54,9 @@ export const coston2 = defineChain({
   id: 114,
   name: "Flare Testnet Coston2",
   nativeCurrency: { name: "Coston2 Flare", symbol: "C2FLR", decimals: 18 },
-  rpcUrls: { default: { http: ["https://coston2-api.flare.network/ext/C/rpc"] } },
+  // enosys first: the public coston2-api endpoint throttles under load (it froze
+  // the executor on Jul 15) — keep it only as the wallet-facing default fallback.
+  rpcUrls: { default: { http: ["https://coston2.enosys.global/ext/C/rpc"] } },
   blockExplorers: {
     default: { name: "Coston2 Explorer", url: "https://coston2-explorer.flare.network" },
   },
@@ -98,8 +100,13 @@ export const wagmiConfig = createConfig({
   ],
   transports: {
     [localhostChain.id]: http("http://127.0.0.1:8545"),
-    [coston2.id]: http("https://coston2-api.flare.network/ext/C/rpc"),
-  } as Record<number, ReturnType<typeof http>>,
+    // enosys primary, public endpoint as automatic fallback (it rate-limits
+    // under league load — see the Jul 15 executor freeze).
+    [coston2.id]: fallback([
+      http("https://coston2.enosys.global/ext/C/rpc"),
+      http("https://coston2-api.flare.network/ext/C/rpc"),
+    ]),
+  } as Record<number, Transport>,
 });
 
 export const VAULT = { address: DEPLOY.vault, abi: VAULT_ABI } as const;

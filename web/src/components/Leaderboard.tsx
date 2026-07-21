@@ -1,5 +1,5 @@
 import { useAccount } from "wagmi";
-import { fmtFxrp, fmtUsd6, useLeaderboard, LEAGUE_DATES, LEAGUE_PRIZE, type LeagueRow } from "../lib/hooks";
+import { fmtFxrp, fmtUsd6, useLeaderboard, LEAGUE_DATES, LEAGUE_PRIZE, LEAGUE_SEASON, type LeagueRow } from "../lib/hooks";
 
 const RANK = ["#1", "#2", "#3"];
 const TOP = 10;
@@ -49,12 +49,12 @@ export default function Leaderboard() {
       <div className="league-head">
         <h2>HALL OF FLAME</h2>
         <span className="league-prize">
-          {LEAGUE_PRIZE} · {LEAGUE_DATES}
+          {LEAGUE_SEASON} · {LEAGUE_PRIZE} · {LEAGUE_DATES}
         </span>
         <span className="league-sub">
           {preSeason
-            ? `Warm-up · all-time standings shown until the season opens ${LEAGUE_DATES.split(" – ")[0]}. Trade now to practice.`
-            : "Paper Perps League · Coston2 testnet · ranked by realized PnL (losses capped at posted margin), liquidations held against you"}
+            ? `Warm-up · all-time standings shown until ${LEAGUE_SEASON} opens ${LEAGUE_DATES.split(" – ")[0]}. Trade now to practice.`
+            : `Paper Perps League ${LEAGUE_SEASON} · Coston2 testnet · ranked by realized PnL (losses capped at posted margin), liquidations held against you`}
         </span>
       </div>
 
