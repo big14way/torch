@@ -45,7 +45,7 @@ export default function App() {
               </button>
             ))}
           </div>
-          <Chart marketKey={marketKey} mark={mark as bigint | undefined} />
+          <Chart marketKey={marketKey} mark={mark as bigint | undefined} positions={positions} />
         </div>
 
         <div className="area-ticket">

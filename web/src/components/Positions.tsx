@@ -1,6 +1,28 @@
 import { useReadContracts, usePublicClient, useWriteContract } from "wagmi";
 import { DEPLOY, STATUS, VAULT, type Position } from "../lib/config";
-import { fmtFxrp, fmtPx, fmtUsd6, livePnlUsd6, marketName } from "../lib/hooks";
+import { fmtFxrp, fmtPx, fmtUsd6, livePnlUsd6, marketName, useXrpPrice } from "../lib/hooks";
+
+const MAINTENANCE = 0.05; // mirrors maintenanceMarginBps = 500
+
+/** Estimated liquidation price + health for an open position.
+ * Health is the equity's distance to the maintenance floor: 1 right after
+ * open, 0 at liquidation. Holds XRP/USD constant; the contract re-marks live. */
+function liqAndHealth(p: Position, mark: bigint | undefined, xrpPx: bigint | undefined) {
+  if (!mark || !xrpPx || p.entryPrice6 === 0n) return null;
+  const entry = Number(p.entryPrice6) / 1e6;
+  const size = Number(p.sizeUsd6) / 1e6;
+  const marginUsd = (Number(p.marginFxrp) / 1e6) * (Number(xrpPx) / 1e6);
+  if (size <= 0 || marginUsd <= 0) return null;
+  const liq = p.isLong
+    ? entry * (1 + MAINTENANCE - marginUsd / size)
+    : entry * (1 - MAINTENANCE + marginUsd / size);
+  const pnlUsd = Number(livePnlUsd6(p, mark) ?? 0n) / 1e6;
+  const equity = marginUsd + pnlUsd;
+  const maint = size * MAINTENANCE;
+  const denom = marginUsd - maint;
+  const health = denom > 0 ? Math.max(0, Math.min(1, (equity - maint) / denom)) : 0;
+  return { liq: Math.max(liq, 0), health };
+}
 
 function useAllMarks(): Record<string, bigint | undefined> {
   const { data } = useReadContracts({
@@ -20,6 +42,7 @@ function useAllMarks(): Record<string, bigint | undefined> {
 
 export default function Positions({ positions }: { positions: Position[] | undefined }) {
   const marks = useAllMarks();
+  const { data: xrpPx } = useXrpPrice();
   const { writeContractAsync, isPending } = useWriteContract();
   const publicClient = usePublicClient();
 
@@ -50,6 +73,7 @@ export default function Positions({ positions }: { positions: Position[] | undef
             <th>Margin</th>
             <th>Entry</th>
             <th>Mark / Exit</th>
+            <th>Liq / Health</th>
             <th>PnL</th>
             <th>Status</th>
             <th></th>
@@ -64,6 +88,7 @@ export default function Positions({ positions }: { positions: Position[] | undef
             const requested = p.status === 1;
             const done = p.status === 4 || p.status === 5;
             const live = open ? livePnlUsd6(p, mark) : null;
+            const lh = open ? liqAndHealth(p, mark, xrpPx as bigint | undefined) : null;
 
             return (
               <tr key={p.id.toString()}>
@@ -81,6 +106,28 @@ export default function Positions({ positions }: { positions: Position[] | undef
                     : mark
                       ? `$${fmtPx(mark)}`
                       : "..."}
+                </td>
+                <td className="liqcell">
+                  {lh ? (
+                    <>
+                      ${lh.liq.toLocaleString("en-US", { maximumFractionDigits: 4 })}
+                      <span
+                        className="healthbar"
+                        title={`health ${(lh.health * 100).toFixed(0)}%`}
+                        style={{ marginLeft: 6 }}
+                      >
+                        <i
+                          style={{
+                            width: `${Math.round(lh.health * 100)}%`,
+                            background:
+                              lh.health > 0.5 ? "#3add9a" : lh.health > 0.2 ? "#ffc24b" : "#ff5470",
+                          }}
+                        />
+                      </span>
+                    </>
+                  ) : (
+                    "—"
+                  )}
                 </td>
                 <td>
                   {done ? (
