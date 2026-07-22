@@ -8,11 +8,9 @@
     "build": "tsc --noEmit"
   },
   "dependencies": {
+    "@nktkas/hyperliquid": "^0.15.4",
     "dotenv": "^16.4.5",
     "viem": "^2.21.0"
-  },
-  "optionalDependencies": {
-    "@nktkas/hyperliquid": "^0.15.4"
   },
   "devDependencies": {
     "@types/node": "^22.5.0",
