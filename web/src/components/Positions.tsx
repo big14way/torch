@@ -1,6 +1,6 @@
 import { useReadContracts, usePublicClient, useWriteContract } from "wagmi";
 import { DEPLOY, STATUS, VAULT, type Position } from "../lib/config";
-import { fmtFxrp, fmtPx, fmtUsd6, livePnlUsd6, marketName, useXrpPrice } from "../lib/hooks";
+import { fmtFxrp, fmtPx, fmtUsd6, livePnlUsd6, marketName, useXrpPrice, waitTx } from "../lib/hooks";
 
 const MAINTENANCE = 0.05; // mirrors maintenanceMarginBps = 500
 
@@ -49,7 +49,7 @@ export default function Positions({ positions }: { positions: Position[] | undef
   const act = async (fn: "requestClose" | "cancelRequest", id: bigint) => {
     try {
       const hash = await writeContractAsync({ ...VAULT, functionName: fn, args: [id] });
-      await publicClient?.waitForTransactionReceipt({ hash });
+      await waitTx(publicClient, hash);
     } catch {
       // surfaced by wallet; table state refreshes on poll
     }

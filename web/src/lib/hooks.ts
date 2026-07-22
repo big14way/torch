@@ -4,6 +4,28 @@ import { keepPreviousData } from "@tanstack/react-query";
 import { hexToString } from "viem";
 import { VAULT, DEPLOY, type Position } from "./config";
 
+/** Coston2's receipt endpoint lags behind the chain; viem's default retry
+ * gives up first and throws "Transaction receipt ... could not be found" for
+ * txs that actually mined. Wait patiently, and never let a lagging receipt
+ * masquerade as a failed transaction — state polls catch up on their own. */
+export async function waitTx(client: unknown, hash: `0x${string}`): Promise<void> {
+  const c = client as
+    | { waitForTransactionReceipt?: (a: unknown) => Promise<unknown> }
+    | undefined;
+  if (!c?.waitForTransactionReceipt) return;
+  try {
+    await c.waitForTransactionReceipt({
+      hash,
+      timeout: 180_000,
+      pollingInterval: 3_000,
+      retryCount: 30,
+    });
+  } catch {
+    // Receipt endpoint still lagging: the tx is almost certainly mined. The
+    // UI's 3s state polls will reflect it; don't surface a scary error.
+  }
+}
+
 export const fmtUsd6 = (x: bigint, digits = 2) =>
   (Number(x) / 1e6).toLocaleString("en-US", {
     minimumFractionDigits: digits,

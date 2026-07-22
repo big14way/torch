@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useAccount, usePublicClient, useReadContract, useWriteContract } from "wagmi";
 import { maxUint256, parseUnits, formatUnits } from "viem";
 import { DEPLOY, FXRP, VAULT } from "../lib/config";
-import { fmtFxrp, useFreeMargin } from "../lib/hooks";
+import { fmtFxrp, useFreeMargin, waitTx } from "../lib/hooks";
 
 export default function AccountPanel() {
   const { address, isConnected } = useAccount();
@@ -62,7 +62,7 @@ export default function AccountPanel() {
   };
 
   const wait = async (hash: `0x${string}`) => {
-    await publicClient?.waitForTransactionReceipt({ hash });
+    await waitTx(publicClient, hash);
   };
 
   const faucet = () =>

@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useAccount, usePublicClient, useWriteContract } from "wagmi";
 import { parseUnits } from "viem";
 import { DEPLOY, VAULT } from "../lib/config";
-import { fmtFxrp, fmtPx, useFreeMargin, useXrpPrice } from "../lib/hooks";
+import { fmtFxrp, fmtPx, useFreeMargin, useXrpPrice, waitTx } from "../lib/hooks";
 
 const MAINTENANCE = 0.05; // mirrors maintenanceMarginBps = 500
 const MIN_NOTIONAL_USD = 10; // Hyperliquid rejects orders under ~$10 notional
@@ -66,7 +66,7 @@ export default function Ticket({ marketKey, mark }: { marketKey: string; mark: b
         // out-of-gas reverts. Pin a generous limit (caller pays only gas used).
         gas: 3_000_000n,
       });
-      await publicClient?.waitForTransactionReceipt({ hash });
+      await waitTx(publicClient, hash);
       setSent(true);
       setTimeout(() => setSent(false), 4000);
     } catch (e) {
