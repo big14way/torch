@@ -279,6 +279,23 @@ export default function Chart({
   }, [togg]);
 
   // ---- drawings ----------------------------------------------------------
+  /** Trendline endpoints are stored at the bar-time they were drawn on; other
+   * timeframes have different bar times, and timeToCoordinate returns null for
+   * a time the scale doesn't know — so snap each endpoint to the nearest bar
+   * that exists on the CURRENT timeframe before handing lines to the canvas. */
+  const snapTrends = (trends: Trendline[]): Trendline[] => {
+    const entry = cacheRef.current.get(`${marketKey}:${tfRef.current}`);
+    if (!entry || entry.candles.length === 0) return trends;
+    const tfSec = TF_SECONDS[tfRef.current];
+    const first = entry.candles[0].time as number;
+    const last = entry.candles[entry.candles.length - 1].time as number;
+    const snap = (p: TrendPoint): TrendPoint => {
+      const t = Math.min(Math.max(Math.round((p.time as number) / tfSec) * tfSec, first), last);
+      return { time: t as UTCTimestamp, price: p.price };
+    };
+    return trends.map((t) => ({ a: snap(t.a), b: snap(t.b) }));
+  };
+
   const applyDrawings = (mkt: string) => {
     const series = candleRef.current;
     if (!series) return;
@@ -296,7 +313,7 @@ export default function Chart({
         })
       );
     }
-    trendPrimRef.current?.setLines(d.trends, null);
+    trendPrimRef.current?.setLines(snapTrends(d.trends), null);
   };
 
   const clearDrawings = () => {
@@ -316,6 +333,9 @@ export default function Chart({
 
     const pointAt = (param: MouseEventParams): TrendPoint | null => {
       if (!param.point) return null;
+      // ignore clicks in the RSI sub-pane — drawings live on the price pane only
+      const paneIndex = (param as { paneIndex?: number }).paneIndex;
+      if (paneIndex !== undefined && paneIndex !== 0) return null;
       const price = series.coordinateToPrice(param.point.y);
       const time: Time | null = param.time ?? chart.timeScale().coordinateToTime(param.point.x);
       if (price === null || time === null) return null;
@@ -347,7 +367,7 @@ export default function Chart({
       if (drawModeRef.current === "trend" && pendingTrendRef.current) {
         const p = pointAt(param);
         const d = drawingsFor(marketKey);
-        trendPrimRef.current?.setLines(d.trends, p ? { a: pendingTrendRef.current, b: p } : null);
+        trendPrimRef.current?.setLines(snapTrends(d.trends), p ? { a: pendingTrendRef.current, b: p } : null);
       }
       // OHLC legend
       const bar = param.seriesData.get(series) as CandlestickData | undefined;

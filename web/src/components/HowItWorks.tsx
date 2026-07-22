@@ -38,8 +38,10 @@ export default function HowItWorks({ onClose }: { onClose: () => void }) {
           >
             verified by Flare's validators here
           </a>
-          . Next: the executor role migrates to Flare's Protocol Managed Wallets when FCC
-          ships, replacing the single operator with a protocol-run quorum of TEEs.
+          . Next: the executor ports onto Flare Confidential Compute as a Flare Confidential
+          Extension — code hash pinned on-chain, instructions signed by Flare's data
+          providers — so no single operator can stall or drain it. Protocol Managed
+          Wallets, still in development, are the eventual endgame.
         </p>
       </div>
     </div>

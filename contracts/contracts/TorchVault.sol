@@ -58,7 +58,7 @@ contract TorchVault is Ownable, ReentrancyGuard, Pausable {
         uint256 entryPrice6; // asset USD price at fill, 6 decimals
         uint256 exitPrice6; // asset USD price at settle, 6 decimals
         int256 pnlFxrp; // realized PnL in FXRP units (signed)
-        uint64 hlOid; // Hyperliquid order id (0 in mock mode)
+        uint64 hlOid; // exchange order id (mock mode stores an internal sequence number)
         Status status;
         uint40 openedAt;
         uint40 closedAt;

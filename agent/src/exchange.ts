@@ -19,7 +19,7 @@
 
 export interface Fill {
   price6: bigint; // asset USD price, 6 decimals
-  oid: bigint; // exchange order id (0 in mock)
+  oid: bigint; // exchange order id (mock mode issues internal sequence numbers, not exchange ids)
   venue?: string; // where it actually filled, for honest logging
 }
 

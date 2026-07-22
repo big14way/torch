@@ -9,7 +9,7 @@ What's live, staged, and next: [ROADMAP.md](ROADMAP.md).
 Built for the Flare Summer Signal hackathon, entering both bounties:
 
 - Interoperable Asset Products: FXRP margin on Flare routed to external Hyperliquid liquidity
-- Confidential Compute Apps: a TEE-held executor key with a no-withdrawal exchange wallet, migrating to Flare Protocol Managed Wallets when FCC ships
+- Confidential Compute Apps: a TEE-held executor key with a no-withdrawal exchange wallet, migrating onto Flare Confidential Compute as a Flare Confidential Extension (FCE); Protocol Managed Wallets are the later endgame once they ship
 
 The XRP community holds one of the largest idle asset bases in crypto, and today there is no way to use XRP itself as perps margin on a deep orderbook. Hyperliquid margins in USDC only. Torch closes that gap: FXRP in, Hyperliquid depth out, settlement bounded by Flare's enshrined FTSOv2 oracle.
 
@@ -55,7 +55,7 @@ Stated honestly. This is v0, a verifiable operator, not yet a trustless bridge:
 1. Every price the executor reports is checked on-chain against Flare FTSOv2 and reverts if it sits outside a 1.5% band. The operator cannot invent prices.
 2. The Hyperliquid key the agent holds is an API wallet, which can trade but can never withdraw. Compromising the agent does not give custody.
 3. Positive PnL is paid from an explicit on-chain insurance fund. Negative PnL accrues to it. Nothing is hidden in an off-chain promise.
-4. Roadmap: FDC Web2Json attestations of Hyperliquid fills replace bare executor reports, and the executor role migrates to Flare Protocol Managed Wallets (a protocol-run quorum of TEEs) when Flare Confidential Compute ships on Songbird.
+4. Roadmap: FDC Web2Json attestations of Hyperliquid fills replace bare executor reports, and the executor ports onto Flare Confidential Compute as a Flare Confidential Extension (code hash pinned on-chain, instructions signed by Flare's data providers — see [fce-orderbook](https://github.com/flare-foundation/fce-orderbook)). Protocol Managed Wallets, still in development, are the eventual endgame.
 
 ## Repo layout
 
@@ -129,7 +129,7 @@ npm run smoke -w contracts
 | FXRP (FTestXRP) | [`0x0b6A3645c240605887a5532109323A3E12273dc7`](https://coston2-explorer.flare.network/address/0x0b6A3645c240605887a5532109323A3E12273dc7) |
 | TorchFdcConsumer | [`0x581B822B34bEf5138f2CE6EaCE81384D553F70a8`](https://coston2-explorer.flare.network/address/0x581B822B34bEf5138f2CE6EaCE81384D553F70a8#code) (verified) |
 
-Markets XRP, BTC, ETH are listed at up to 10x, every executor price bounded live by the enshrined FtsoV2 (verified on-chain after deploy: the vault reads real FTSO marks, normalized to 6 decimals).
+Markets XRP, BTC, ETH, HYPE, SOL and DOGE are listed at up to 10x (the last three added Jul 21 2026 by owner `listMarket`, feeds verified live first), every executor price bounded live by the enshrined FtsoV2 (verified on-chain after deploy: the vault reads real FTSO marks, normalized to 6 decimals).
 
 **Confidential executor (Phala TDX enclave, attested):**
 
@@ -138,7 +138,7 @@ The executor key is generated *inside* a hardware TEE (Phala Cloud, Intel TDX) a
 - Live status endpoint (returns the current executor address + attestation mode): https://cc1525a5ca15c4c8ef2668e72bc888f5a0c3239a.dstack-pha-prod9.phala.network
 - App id `cc1525a5ca15c4c8ef2668e72bc888f5a0c3239a`, compose hash `3b1e6ed0f43a59df4b0a2028701106c24a4363f680b92be7bdf851b9c9bac332`, aggregated measurement `b33eb22ae8eed320d1ded19532519296c2d60931b5d9f64e5de34a5b9a70e800` (bound by TDX).
 
-In this deployment the enclave fills at the FTSO mark; the live Hyperliquid hop (proven separately on testnet) routes when the TEE is granted outbound access to the exchange. Migration target: Flare Protocol Managed Wallets when FCC ships on Songbird.
+In this deployment the enclave fills at the FTSO mark; the live Hyperliquid hop (proven separately on testnet) routes when the TEE is granted outbound access to the exchange. In mock mode the stored `hlOid` is an internal sequence number, not an exchange order id — only exchange-routed fills can be FDC-attested. Migration target: a Flare Confidential Extension on FCC (Songbird), with Protocol Managed Wallets as the eventual endgame.
 
 **FDC Web2Json fill attestation (the path off trusted reports):**
 
@@ -147,7 +147,7 @@ The endgame of the trust model is that a fill is not believed because our execut
 - **A vault position is bound to the exchange fill that backs it.** `attestFillForPosition(positionId, proof)` reads the Hyperliquid order id the vault stored at `confirmFill`, reconstructs the exact JQ transform for that order id on-chain, and only accepts an FDC proof whose request matches — with every degree of freedom pinned: URL, account body, HTTP method, headers, query params, JQ, and the ABI signature (a free signature would let components be reordered and fields transposed). The fill must also match the position's market and direction, and each fill can back at most one position. Live: vault position #10 bound to Hyperliquid oid `55912729349` in tx [`0xb80330ba…674d7d`](https://coston2-explorer.flare.network/tx/0xb80330ba62544314a7f3d50ff22d0798258fecb56fcabf6d25a5b91a0e674d7d). What's proven: the order id the vault recorded exists in the executor account's real fill history with the right market and side; price/size are recorded in the event but not equivalence-checked (entries are FTSO-banded marks, testnet exchange prices legitimately drift).
 - Standalone fill attestation (`attestFill`, latest fill, replay-guarded by order id): tx [`0xe6a22c2f…8878cd`](https://coston2-explorer.flare.network/tx/0xe6a22c2fe1618adcc50bd745e37c284e336045316a7ca8deaa59b3f2758878cd).
 - Anyone can reproduce either: `npm run fdc:attest -w contracts` (latest fill) or `POSITION_ID=10 npm run fdc:attest -w contracts` (position-bound). The flow: prepare the request at the FDC verifier, submit to `FdcHub`, wait the voting round (~2-3 min), pull the Merkle proof from the DA layer, then the consumer verifies it through `ContractRegistry.getFdcVerification()`.
-- Kept out of the `confirmFill` hot path on purpose: a round trip is ~2 min plus a fee, so requiring an inline proof on every fill would stall the live loop. Attestation is the settlement-verification path — any fill the vault records can be proven after the fact, by anyone, without trusting us.
+- Kept out of the `confirmFill` hot path on purpose: a round trip is ~2 min plus a fee, so requiring an inline proof on every fill would stall the live loop. Attestation is the settlement-verification path — any fill backed by a real exchange order id can be proven after the fact, by anyone, without trusting us. (Mock-mode fills carry internal sequence ids and are not attestable; the FDC path applies to exchange-routed fills.)
 
 To reproduce the deployment from scratch:
 

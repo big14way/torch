@@ -47,7 +47,7 @@ export default function RouteTrace({ positions }: { positions: Position[] | unde
         <div className={`node ${hlLit ? "lit" : ""}`}>
           <div className="orb" />
           <div className="name">Hyperliquid</div>
-          <div className="desc">deep orderbook fill</div>
+          <div className="desc">hedge leg (testnet-proven)</div>
         </div>
       </div>
       <div className="caption">{caption}</div>

@@ -335,6 +335,7 @@ a:hover { text-decoration: underline; }
 .league { margin-top: 14px; }
 .league-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 4px; }
 .league-sub { color: var(--smoke-2); font-size: 11px; letter-spacing: 0.04em; }
+.league-rules { color: var(--smoke-2); font-size: 10px; letter-spacing: 0.03em; opacity: 0.85; display: block; margin-top: 3px; }
 .league .mono { font-family: var(--font-data); }
 .league-rank { font-size: 13px; font-weight: 700; font-family: var(--font-data); }
 .league-rank.r1 { color: var(--flare); }
@@ -363,8 +364,9 @@ a:hover { text-decoration: underline; }
 .league-prize {
   font-family: var(--font-data); font-size: 12px; color: var(--flare);
   border: 1px solid var(--ember-dim); border-radius: 999px; padding: 3px 11px;
-  white-space: nowrap;
 }
+/* let the pill wrap on narrow phones instead of clipping the season banner */
+@media (min-width: 480px) { .league-prize { white-space: nowrap; } }
 
 .balrow .v.maxable { cursor: pointer; border-bottom: 1px dashed var(--smoke-2); }
 .balrow .v.maxable:hover { color: var(--flare); border-color: var(--flare); }

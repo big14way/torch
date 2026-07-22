@@ -56,6 +56,12 @@ export default function Leaderboard() {
             ? `Warm-up · all-time standings shown until ${LEAGUE_SEASON} opens ${LEAGUE_DATES.split(" – ")[0]}. Trade now to practice.`
             : `Paper Perps League ${LEAGUE_SEASON} · Coston2 testnet · ranked by realized PnL (losses capped at posted margin), liquidations held against you`}
         </span>
+        <span className="league-rules">
+          Prize split: $40 / $25 / $20 / $15 / $12 / $10 / $8 / $8 / $6 / $6. House &amp; team
+          wallets appear on the board (they keep the plumbing honest) but can't win. On-vault
+          profit payouts are capped at the live insurance fund; board ranking always uses full
+          realized PnL.
+        </span>
       </div>
 
       {loading ? (

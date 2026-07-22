@@ -78,6 +78,11 @@ async function main() {
 
   // Status endpoint: exposes the enclave-generated executor address + attestation
   // so it can be read/verified without container-log access (served via the gateway).
+  // Loop-health telemetry, surfaced in the status JSON so "idle" and "wedged"
+  // are distinguishable from outside (the Jul 22 audit found a 16h silence
+  // that was unprovable either way).
+  const health = { lastLoopAt: 0, loops: 0, gasWei: 0n, gasLow: false };
+
   const STATUS_PORT = Number(process.env.PORT || 0);
   if (STATUS_PORT > 0) {
     createHttpServer((_req, res) => {
@@ -92,6 +97,12 @@ async function main() {
               executor: account.address,
               executionMode: MODE,
               tee: { mode: att.mode, imageDigest: att.imageDigest ?? null },
+              loop: {
+                lastTick: health.lastLoopAt ? new Date(health.lastLoopAt).toISOString() : null,
+                ageSec: health.lastLoopAt ? Math.round((Date.now() - health.lastLoopAt) / 1000) : null,
+                cycles: health.loops,
+              },
+              gas: { balanceWei: health.gasWei.toString(), low: health.gasLow },
             },
             null,
             2
@@ -196,6 +207,56 @@ async function main() {
   // launch-surge stall came from setInterval firing every 3s regardless of
   // whether the prior (now slow, sequential) cycle had returned, which
   // multiplied reads until the public RPC 429'd and the loop wedged.
+  /** Re-read a position and check whether it reached one of the expected
+   * states — the on-chain source of truth for "did my tx actually land". */
+  const confirmedOnChain = async (id: bigint, expect: number[]): Promise<boolean> => {
+    try {
+      const p = (await pub.readContract({ ...vault, functionName: "getPosition", args: [id] })) as Position;
+      return expect.includes(p.status);
+    } catch {
+      return false;
+    }
+  };
+
+  /** Coston2-tolerant receipt wait. Receipts on this RPC routinely lag past
+   * viem's default window while the tx has in fact mined (22 such false
+   * negatives in the Jul 18-21 logs, every one confirmed on-chain later, 11 of
+   * them triggering phantom unwinds). On timeout, trust chain state over the
+   * receipt endpoint before declaring failure. */
+  const waitMined = async (hash: `0x${string}`, id: bigint, expect: number[]): Promise<void> => {
+    try {
+      await pub.waitForTransactionReceipt({ hash, timeout: 90_000, pollingInterval: 3_000 });
+    } catch (e) {
+      if (await confirmedOnChain(id, expect)) {
+        log(id, `receipt endpoint lagged but state confirmed on-chain (tx ${hash.slice(0, 10)})`);
+        return;
+      }
+      throw e;
+    }
+  };
+
+  // Heartbeat: every ~10 min log liveness and check the executor's gas against
+  // 10x the viem 3M-gas prefund floor (the Jul 15 outage was a silent gas
+  // starvation nobody could see from outside).
+  const heartbeat = async () => {
+    try {
+      const [bal, gasPrice] = await Promise.all([
+        pub.getBalance({ address: account.address }),
+        pub.getGasPrice(),
+      ]);
+      health.gasWei = bal;
+      const floor = 3_000_000n * gasPrice * 10n;
+      health.gasLow = bal < floor;
+      const line = `heartbeat: loops=${health.loops} gas=${(Number(bal) / 1e18).toFixed(2)} C2FLR${health.gasLow ? " LOW — top up now" : ""}`;
+      console.log(new Date().toISOString(), line);
+    } catch (e) {
+      console.error("heartbeat error:", (e as Error).message);
+    } finally {
+      setTimeout(heartbeat, 600_000);
+    }
+  };
+  heartbeat();
+
   const runLoop = async () => {
     try {
       const count = (await pub.readContract({
@@ -204,6 +265,7 @@ async function main() {
       })) as bigint;
 
       for (let i = 0n; i < count; i++) {
+       try {
         if (finalized.has(i.toString())) continue; // terminal position; skip the RPC read
         const p = (await pub.readContract({
           ...vault,
@@ -226,21 +288,27 @@ async function main() {
                 gas: TX_GAS,
                 chain: null,
               });
-              await pub.waitForTransactionReceipt({ hash }); // hold the lock until it mines
+              await waitMined(hash, p.id, [S.Open]); // hold the lock until it mines
               log(p.id, `OPEN  ${key} ${p.isLong ? "long" : "short"} @ ${fmt6(fill.price6)} (${fill.venue ?? exchange.name}) tx ${hash.slice(0, 10)}`);
             } catch (confirmErr) {
               // The exchange filled but the on-chain confirm failed (band
-              // revert, gas, RPC): unwind the real fill so no unbacked
-              // exposure leaks on the hedge book. Mock fills (oid 0) skip.
-              if (fill.oid !== 0n) {
-                try {
-                  await exchange.close(key, p.isLong, p.sizeUsd6);
-                  log(p.id, `unwound exchange fill after confirm failure`);
-                } catch (unwindErr) {
-                  log(p.id, `UNWIND FAILED, manual check needed: ${(unwindErr as Error).message}`);
+              // revert, gas, RPC). Before unwinding, trust the chain: if the
+              // position is Open the confirm actually landed. Only unwind a
+              // REAL exchange fill (mock + FTSO-fallback fills have nothing
+              // to unwind — the old oid!==0 guard missed mock's sequence ids).
+              if (await confirmedOnChain(p.id, [S.Open])) {
+                log(p.id, `confirm landed despite error (${(confirmErr as Error).message.slice(0, 60)})`);
+              } else {
+                if (exchange.name !== "mock" && fill.oid !== 0n) {
+                  try {
+                    await exchange.close(key, p.isLong, p.sizeUsd6);
+                    log(p.id, `unwound exchange fill after confirm failure`);
+                  } catch (unwindErr) {
+                    log(p.id, `UNWIND FAILED, manual check needed: ${(unwindErr as Error).message}`);
+                  }
                 }
+                throw confirmErr;
               }
-              throw confirmErr;
             }
           } catch (e) {
             log(p.id, `open failed: ${(e as Error).message}`);
@@ -260,7 +328,7 @@ async function main() {
               gas: TX_GAS,
               chain: null,
             });
-            await pub.waitForTransactionReceipt({ hash });
+            await waitMined(hash, p.id, [S.Closed]);
             log(p.id, `CLOSE ${key} @ ${fmt6(fill.price6)} (${fill.venue ?? exchange.name}) tx ${hash.slice(0, 10)}`);
           } catch (e) {
             log(p.id, `close failed: ${(e as Error).message}`);
@@ -292,7 +360,7 @@ async function main() {
                   gas: TX_GAS,
                   chain: null,
                 });
-                await pub.waitForTransactionReceipt({ hash }); // hold until mined
+                await waitMined(hash, p.id, [S.Liquidated]); // hold until mined
                 log(p.id, `LIQUIDATE ${key} @ ${fmt6(mark)} equity ${fmt6(equity)} tx ${hash.slice(0, 10)}`);
               } finally {
                 inFlight.delete(idStr);
@@ -305,10 +373,17 @@ async function main() {
           finalized.add(i.toString()); // never re-read a terminal position
           seenClosed.add(p.id.toString());
         }
+       } catch (e) {
+        // Per-position isolation: one flaky read/tx never aborts the rest of
+        // the cycle (previously a single throw skipped every later position).
+        console.error(`position ${i} error:`, (e as Error).message);
+       }
       }
     } catch (e) {
       console.error("loop error:", (e as Error).message);
     } finally {
+      health.lastLoopAt = Date.now();
+      health.loops += 1;
       setTimeout(runLoop, POLL_MS);
     }
   };

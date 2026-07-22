@@ -27,3 +27,20 @@ day*.html
 day*.png
 PITCH.md
 HANDOFF.md
+
+# marketing / submission media (kept local; large binaries + internal drafts)
+video/
+torch-pitch-deck*.pdf
+pitch-deck*.html
+architecture.html
+thankyou*.html
+thankyou*.png
+torch-architecture.png
+day*.html
+day*.png
+proof.html
+proof.png
+thumbnail.html
+thumbnail.png
+GRANT_SUBMISSION.md
+BUIDL_SUBMISSION.md
