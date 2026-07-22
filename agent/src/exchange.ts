@@ -98,7 +98,9 @@ export class HyperliquidTestnet implements Exchange {
     if (!hl) {
       // Surface the REAL failure — "not installed" masked a packaging error
       // for hours during the Jul 22 enclave spike.
-      throw new Error(`@nktkas/hyperliquid failed to import: ${importErr?.message ?? "unknown"}`);
+      throw new Error(
+        `@nktkas/hyperliquid failed to import: ${(importErr as Error | null)?.message ?? "unknown"}`
+      );
     }
     if (!this.privateKey) {
       throw new Error("HL_PRIVATE_KEY is empty. Set it in agent/.env for testnet mode.");
