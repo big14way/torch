@@ -15,7 +15,10 @@ services:
       PORT: "3000"
       ENCLAVE_KEYGEN: "1"
       DSTACK: "1"
-      EXECUTION_MODE: testnet
+      # mock while the league runs (fills at the FTSO mark; the enclave has no
+      # exchange egress yet). Flip to "testnet" to route real Hyperliquid
+      # testnet orders once egress is granted and smoke-tested.
+      EXECUTION_MODE: mock
       RPC_URL: https://coston2.enosys.global/ext/C/rpc
       HL_API_URL: https://api.hyperliquid-testnet.xyz
       HL_PRIVATE_KEY: ${HL_PRIVATE_KEY}
