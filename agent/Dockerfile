@@ -1,7 +1,7 @@
 # Torch executor agent, built for Google Cloud Confidential Space.
 # The executor key is generated INSIDE the enclave at boot (no key baked in).
 # Build context is the agent/ directory:  docker build -t <img> agent/
-FROM node:20-slim
+FROM node:22-slim
 
 WORKDIR /app
 
