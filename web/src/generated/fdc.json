@@ -2,8 +2,8 @@
   "fdcConsumer": "0x581B822B34bEf5138f2CE6EaCE81384D553F70a8",
   "network": "coston2",
   "vault": "0x7fC640Bd0e635a6AFc3B437e80f0DE192f6FA0BA",
-  "attestTx": "0xe6a22c2fe1618adcc50bd745e37c284e336045316a7ca8deaa59b3f2758878cd",
-  "attestedOid": "55912796181",
+  "attestTx": "0xe2798ac7031802b535ec2a52f844a2c811021b496151ba21405ece9dc3257c01",
+  "attestedOid": "56855250250",
   "attestedCoin": "BTC",
   "positionAttest": {
     "positionId": "10",
