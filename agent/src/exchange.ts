@@ -90,11 +90,15 @@ export class HyperliquidTestnet implements Exchange {
     // Verified against @nktkas/hyperliquid 0.15.4: exports WalletClient and
     // HttpTransport({ url: { api } }); wallet accepts any signTypedData
     // signer, which a viem local account satisfies.
-    const hl = await import("@nktkas/hyperliquid").catch(() => null);
+    let importErr: Error | null = null;
+    const hl = await import("@nktkas/hyperliquid").catch((e: Error) => {
+      importErr = e;
+      return null;
+    });
     if (!hl) {
-      throw new Error(
-        "@nktkas/hyperliquid is not installed. Run: npm install @nktkas/hyperliquid -w agent"
-      );
+      // Surface the REAL failure — "not installed" masked a packaging error
+      // for hours during the Jul 22 enclave spike.
+      throw new Error(`@nktkas/hyperliquid failed to import: ${importErr?.message ?? "unknown"}`);
     }
     if (!this.privateKey) {
       throw new Error("HL_PRIVATE_KEY is empty. Set it in agent/.env for testnet mode.");
