@@ -82,6 +82,9 @@ async function main() {
   // are distinguishable from outside (the Jul 22 audit found a 16h silence
   // that was unprovable either way).
   const health = { lastLoopAt: 0, loops: 0, gasWei: 0n, gasLow: false };
+  // HL egress spike results (HL_SMOKE=1 runs a one-shot exchange round trip
+  // instead of the vault loop; see the gate below runLoop's definition).
+  let smokeResult: Record<string, unknown> | undefined;
 
   const STATUS_PORT = Number(process.env.PORT || 0);
   if (STATUS_PORT > 0) {
@@ -103,6 +106,7 @@ async function main() {
                 cycles: health.loops,
               },
               gas: { balanceWei: health.gasWei.toString(), low: health.gasLow },
+              ...(smokeResult ? { smoke: smokeResult } : {}),
             },
             null,
             2
@@ -387,6 +391,50 @@ async function main() {
       setTimeout(runLoop, POLL_MS);
     }
   };
+
+  // --- HL egress spike (env-gated) -----------------------------------------
+  // HL_SMOKE=1 answers one question from inside the enclave: can this CVM
+  // reach Hyperliquid testnet and place a signed order? It runs a single
+  // ~$12 BTC open/close through the normal adapter, publishes the result in
+  // the status JSON, and NEVER starts the vault loop — so a spike CVM can
+  // run alongside production with zero interference.
+  if (process.env.HL_SMOKE === "1") {
+    smokeResult = { startedAt: new Date().toISOString(), ok: false };
+    try {
+      const api = process.env.HL_API_URL || "https://api.hyperliquid-testnet.xyz";
+      const t0 = Date.now();
+      const res = await fetch(`${api}/info`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "meta" }),
+      });
+      const meta = (await res.json()) as { universe: unknown[] };
+      smokeResult.infoLatencyMs = Date.now() - t0;
+      smokeResult.universeSize = meta.universe.length;
+      console.log(`SMOKE info ok: ${smokeResult.infoLatencyMs}ms, universe=${meta.universe.length}`);
+
+      const t1 = Date.now();
+      const fill = await exchange.open("BTC", true, 12_000_000n);
+      smokeResult.openMs = Date.now() - t1;
+      smokeResult.openOid = fill.oid.toString();
+      smokeResult.openPx6 = fill.price6.toString();
+      smokeResult.venue = fill.venue ?? exchange.name;
+      console.log(`SMOKE open ok: oid=${fill.oid} px=${fmt6(fill.price6)} in ${smokeResult.openMs}ms`);
+
+      const t2 = Date.now();
+      const closed = await exchange.close("BTC", true, 12_000_000n);
+      smokeResult.closeMs = Date.now() - t2;
+      smokeResult.closeOid = closed.oid.toString();
+      console.log(`SMOKE close ok: oid=${closed.oid} in ${smokeResult.closeMs}ms`);
+      smokeResult.ok = true;
+    } catch (e) {
+      smokeResult.error = (e as Error).message;
+      console.error("SMOKE FAILED:", (e as Error).message);
+    }
+    console.log("SMOKE done — vault loop intentionally not started.");
+    return; // status server stays up to serve the result
+  }
+
   runLoop();
 }
 
