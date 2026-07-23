@@ -68,7 +68,7 @@ torch/
 
 ## Run it locally, end to end
 
-Requirements: Node 20 or newer, npm 10 or newer, MetaMask (or any injected wallet).
+Requirements: Node 22 or newer (the Hyperliquid SDK needs the global `WebSocket`, which Node ships from 22; mock-mode-only runs work on 20), npm 10 or newer, MetaMask (or any injected wallet).
 
 ```bash
 npm install
@@ -146,6 +146,7 @@ The endgame of the trust model is that a fill is not believed because our execut
 
 - **A vault position is bound to the exchange fill that backs it.** `attestFillForPosition(positionId, proof)` reads the Hyperliquid order id the vault stored at `confirmFill`, reconstructs the exact JQ transform for that order id on-chain, and only accepts an FDC proof whose request matches — with every degree of freedom pinned: URL, account body, HTTP method, headers, query params, JQ, and the ABI signature (a free signature would let components be reordered and fields transposed). The fill must also match the position's market and direction, and each fill can back at most one position. Live: vault position #10 bound to Hyperliquid oid `55912729349` in tx [`0xb80330ba…674d7d`](https://coston2-explorer.flare.network/tx/0xb80330ba62544314a7f3d50ff22d0798258fecb56fcabf6d25a5b91a0e674d7d). What's proven: the order id the vault recorded exists in the executor account's real fill history with the right market and side; price/size are recorded in the event but not equivalence-checked (entries are FTSO-banded marks, testnet exchange prices legitimately drift).
 - Standalone fill attestation (`attestFill`, latest fill, replay-guarded by order id): tx [`0xe6a22c2f…8878cd`](https://coston2-explorer.flare.network/tx/0xe6a22c2fe1618adcc50bd745e37c284e336045316a7ca8deaa59b3f2758878cd).
+- **An enclave-executed fill, attested (Jul 22 2026):** the TEE-held key placed and closed a real Hyperliquid testnet order *from inside the enclave*, and FDC verified that exact fill on-chain: tx [`0xe2798ac7…57c01`](https://coston2-explorer.flare.network/tx/0xe2798ac7031802b535ec2a52f844a2c811021b496151ba21405ece9dc3257c01). The whole trust chain — sealed key, real orderbook, validator proof — has run as one loop.
 - Anyone can reproduce either: `npm run fdc:attest -w contracts` (latest fill) or `POSITION_ID=10 npm run fdc:attest -w contracts` (position-bound). The flow: prepare the request at the FDC verifier, submit to `FdcHub`, wait the voting round (~2-3 min), pull the Merkle proof from the DA layer, then the consumer verifies it through `ContractRegistry.getFdcVerification()`.
 - Kept out of the `confirmFill` hot path on purpose: a round trip is ~2 min plus a fee, so requiring an inline proof on every fill would stall the live loop. Attestation is the settlement-verification path — any fill backed by a real exchange order id can be proven after the fact, by anyone, without trusting us. (Mock-mode fills carry internal sequence ids and are not attestable; the FDC path applies to exchange-routed fills.)
 
@@ -179,7 +180,7 @@ Set `EXECUTION_MODE=testnet` in `agent/.env`. Prerequisites, in order:
 
 The adapter uses the community SDK `@nktkas/hyperliquid` (verified against 0.15.4: `WalletClient`, `HttpTransport({ url: { api } })`, viem account as signer). Reads go through the public `/info` endpoint.
 
-The adapter has been proven against the live testnet: real BTC and ETH fills placed and closed through this code path (18 fills on the demo account), with per-asset lot rounding and the $10 minimum-notional guard exercised. One of those fills is FDC-attested on-chain (see the Coston2 section above).
+The adapter has been proven against the live testnet: real BTC and ETH fills placed and closed through this code path (20 fills on the demo account — the two most recent executed *from inside the TDX enclave*), with per-asset lot rounding and the $10 minimum-notional guard exercised. Two of those fills are FDC-attested on-chain (see the Coston2 section above).
 
 ## Assumptions, flagged then verified
 
