@@ -67,6 +67,8 @@ export default function App() {
 
       <div className="footer">
         <span>Torch is testnet software. Not audited. Not investment advice.</span>
+        <a href="https://t.me/+4bWN0yFjIUc4ZGNk" target="_blank" rel="noreferrer">Telegram community</a>
+        <a href="https://x.com/torchxrponflare" target="_blank" rel="noreferrer">X</a>
         <a href="https://dev.flare.network" target="_blank" rel="noreferrer">Flare docs</a>
         <a href="https://hyperliquid.gitbook.io/hyperliquid-docs" target="_blank" rel="noreferrer">Hyperliquid docs</a>
         <a href="https://faucet.flare.network" target="_blank" rel="noreferrer">Coston2 faucet</a>
