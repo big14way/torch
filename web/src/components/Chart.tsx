@@ -14,7 +14,7 @@ import {
   type Time,
   type UTCTimestamp,
 } from "lightweight-charts";
-import { fmtPx, useXrpPrice } from "../lib/hooks";
+import { useXrpPrice } from "../lib/hooks";
 import type { Position } from "../lib/config";
 import {
   TIMEFRAMES,
@@ -453,7 +453,6 @@ export default function Chart({
   return (
     <div>
       <div className="chart-head">
-        <span className="px">{mark !== undefined ? `$${fmtPx(mark)}` : "..."}</span>
         <span className="sub">
           {marketKey}-PERP · {srcLabel}
         </span>

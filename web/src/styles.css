@@ -521,3 +521,26 @@ html, body { overflow-x: hidden; max-width: 100%; }
 .verify-links li::before { content: "\25B8"; position: absolute; left: 0; color: var(--ember); }
 .marketstrip { flex-wrap: wrap; }
 @media (max-width: 980px) { .bandchip { display: none; } }
+
+/* market strip as a real market header */
+.marketstrip { padding: 10px 16px; gap: 18px; }
+.ms-price { display: flex; align-items: baseline; gap: 10px; }
+.ms-mark { font-family: var(--font-data); font-size: 24px; font-weight: 600; letter-spacing: -0.02em; }
+.ms-mark.tick-up { color: var(--long); }
+.ms-mark.tick-down { color: var(--short); }
+.ms-delta { font-family: var(--font-data); font-size: 13px; }
+.ms-delta.up { color: var(--long); }
+.ms-delta.down { color: var(--short); }
+.ms-delta em { font-style: normal; color: var(--smoke-2); font-size: 10px; margin-left: 2px; }
+.ms-meta { display: flex; align-items: center; gap: 10px; }
+.ms-lev { font-family: var(--font-data); font-size: 11px; color: var(--smoke-2); white-space: nowrap; }
+@media (max-width: 980px) { .ms-lev { display: none; } .ms-mark { font-size: 20px; } }
+
+/* page heroes: League + Verify voice */
+.pagehero { padding: 26px 4px 8px; }
+.ph-eyebrow { font-size: 12px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--ember); font-weight: 700; margin-bottom: 8px; }
+.ph-title { font-family: var(--font-display); font-size: clamp(26px, 4.2vw, 40px); line-height: 1.05; margin: 0 0 10px; letter-spacing: -0.01em; }
+.ph-grad { background: linear-gradient(96deg, var(--ember), var(--flare)); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+.ph-sub { color: var(--smoke); font-size: 14px; line-height: 1.55; max-width: 640px; margin: 0 0 14px; }
+.ph-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.ph-actions .btn { text-decoration: none; }

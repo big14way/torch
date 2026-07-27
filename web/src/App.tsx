@@ -15,6 +15,7 @@ import Leaderboard from "./components/Leaderboard";
 import HouseBook from "./components/HouseBook";
 import Landing from "./components/Landing";
 import FeedbackNudge from "./components/FeedbackNudge";
+import MarketStrip from "./components/MarketStrip";
 
 export default function App() {
   const { path, navigate } = useRoute();
@@ -53,10 +54,37 @@ export default function App() {
 
       {path === "/league" ? (
         <main className="page-narrow">
+          <div className="pagehero">
+            <div className="ph-eyebrow">Paper Perps League</div>
+            <h2 className="ph-title">
+              Season 2 <span className="ph-grad">is live.</span>
+            </h2>
+            <p className="ph-sub">
+              Jul 22 – Aug 5 · $150 in FXRP · top 10 paid. Free testnet trading, ranked by
+              realized PnL. The only thing at risk is your ego.
+            </p>
+            <div className="ph-actions">
+              <Link to="/trade" className="btn primary">Enter the arena</Link>
+              <a className="btn ghost" href="https://faucet.flare.network" target="_blank" rel="noreferrer">
+                Get free FXRP
+              </a>
+            </div>
+          </div>
           <Leaderboard />
         </main>
       ) : path === "/verify" ? (
         <main className="page-narrow">
+          <div className="pagehero">
+            <div className="ph-eyebrow">Verify, don't trust</div>
+            <h2 className="ph-title">
+              Nothing here asks <span className="ph-grad">for your trust.</span>
+            </h2>
+            <p className="ph-sub">
+              Every price is bounded by Flare's oracle on-chain. The signing key lives in attested
+              hardware. Fills are re-proven by Flare's validators. This page is where you check all
+              of it yourself.
+            </p>
+          </div>
           <div className="card verify-card">
             <h2>HOW A TRADE TRAVELS</h2>
             <HowItWorksContent />
@@ -133,28 +161,7 @@ export default function App() {
         <main>
           <FeedbackNudge positions={positions} />
 
-          <div className="marketstrip card">
-            <div className="markettabs" role="tablist" aria-label="Markets">
-              {DEPLOY.markets.map((m) => (
-                <button
-                  key={m.key}
-                  role="tab"
-                  aria-selected={m.key === marketKey}
-                  className={m.key === marketKey ? "active" : ""}
-                  onClick={() => setMarketKey(m.key)}
-                >
-                  {m.key}-PERP
-                </button>
-              ))}
-            </div>
-            <div className="spacer" />
-            <span
-              className="bandchip"
-              title="Every settlement price must sit within 1.5% of Flare's FTSOv2 feed or the transaction reverts"
-            >
-              FTSO band ±1.5%
-            </span>
-          </div>
+          <MarketStrip marketKey={marketKey} setMarketKey={setMarketKey} mark={mark as bigint | undefined} />
 
           <div className="grid" id="terminal">
             <div className="area-chart card">

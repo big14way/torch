@@ -152,3 +152,44 @@ export function rsi(candles: CandlestickData[], period = 14): LineData[] {
   }
   return out;
 }
+
+// ---------------------------------------------------------------------------
+// 24h change for the market strip. One 1h-candle fetch per coin, cached for
+// 5 minutes at module scope; returns null when history isn't usable (then the
+// strip simply hides the stat instead of showing a wrong number).
+const changeCache = new Map<string, { at: number; pct: number | null }>();
+
+export async function fetch24hChangePct(coin: string, livePrice: number): Promise<number | null> {
+  const hit = changeCache.get(coin);
+  if (hit && Date.now() - hit.at < 300_000) return hit.pct;
+  let pct: number | null = null;
+  try {
+    const endTime = Date.now();
+    const res = await fetch(HL_INFO, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type: "candleSnapshot",
+        req: { coin, interval: "1h", startTime: endTime - 26 * 3600_000, endTime },
+      }),
+    });
+    if (res.ok) {
+      const rows = (await res.json()) as HlCandle[];
+      if (Array.isArray(rows) && rows.length >= 24) {
+        const then = Number(rows[rows.length - 24].c);
+        // only trust it when HL's level matches the live FTSO mark (same
+        // divergence rule as the chart history)
+        if (then > 0 && livePrice > 0) {
+          const ratio = livePrice / Number(rows[rows.length - 1].c);
+          if (ratio > 1 - MAX_DIVERGENCE && ratio < 1 + MAX_DIVERGENCE) {
+            pct = ((livePrice - then) / then) * 100;
+          }
+        }
+      }
+    }
+  } catch {
+    pct = null;
+  }
+  changeCache.set(coin, { at: Date.now(), pct });
+  return pct;
+}
