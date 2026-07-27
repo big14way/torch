@@ -68,7 +68,7 @@ export default function Header({
   const metamaskDeepLink =
     typeof window !== "undefined"
       ? `https://metamask.app.link/dapp/${window.location.host}${window.location.pathname}`
-      : "https://metamask.app.link/dapp/usetorch.vercel.app";
+      : "https://metamask.app.link/dapp/usetorch.xyz";
 
   return (
     <header className="header">

@@ -2,7 +2,7 @@
 
 Trade perps with your XRP. Margin stays on Flare, execution happens on Hyperliquid's orderbook, and the keys that bridge the two live inside a TEE.
 
-**Live on Coston2 testnet: https://usetorch.vercel.app** — grab free C2FLR + FTestXRP from the [Flare faucet](https://faucet.flare.network), deposit, trade. Three minutes, costs nothing.
+**Live on Coston2 testnet: https://usetorch.xyz** (usetorch.vercel.app also works) — grab free C2FLR + FTestXRP from the [Flare faucet](https://faucet.flare.network), deposit, trade. Three minutes, costs nothing.
 
 What's live, staged, and next: [ROADMAP.md](ROADMAP.md).
 

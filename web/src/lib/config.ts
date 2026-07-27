@@ -91,7 +91,7 @@ export const wagmiConfig = createConfig({
             metadata: {
               name: "Torch",
               description: "XRP-margined perps on Flare",
-              url: "https://usetorch.vercel.app",
+              url: "https://usetorch.xyz",
               icons: [],
             },
           }),
