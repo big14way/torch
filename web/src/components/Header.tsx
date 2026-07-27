@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useAccount, useConnect, useDisconnect, useSwitchChain } from "wagmi";
 import { ACTIVE_CHAIN, DEPLOY, FEEDBACK_CONFIGURED, feedbackUrl } from "../lib/config";
 import { fmtPx, useXrpPrice } from "../lib/hooks";
+import { Link } from "../lib/router";
 
 function Flame() {
   return (
@@ -35,15 +36,7 @@ function TickValue({ value }: { value: bigint | undefined }) {
   return <span className={`value ${cls}`}>{value !== undefined ? `$${fmtPx(value)}` : "..."}</span>;
 }
 
-export default function Header({
-  marketKey,
-  mark,
-  onHow,
-}: {
-  marketKey: string;
-  mark: bigint | undefined;
-  onHow: () => void;
-}) {
+export default function Header() {
   // useAccount().chainId reflects the wallet's actual chain; wagmi's useChainId()
   // only ever returns the configured chain in a single-chain setup, so it can
   // never detect a wallet sitting on the wrong network.
@@ -72,11 +65,18 @@ export default function Header({
 
   return (
     <header className="header">
-      <div className="wordmark">
+      <Link to="/" className="wordmark">
         <Flame />
         <h1>TORCH</h1>
-        <span className="tagline">XRP margin in. Hyperliquid depth out.</span>
-      </div>
+      </Link>
+
+      <nav className="mainnav" aria-label="Main">
+        <Link to="/trade">Trade</Link>
+        <Link to="/league">League</Link>
+        <Link to="/verify">Verify</Link>
+      </nav>
+
+      <div className="spacer" />
 
       <div className="statstrip" aria-live="polite">
         <div className="stat">
@@ -84,20 +84,13 @@ export default function Header({
           <TickValue value={xrpPx as bigint | undefined} />
         </div>
         <div className="stat">
-          <span className="label">{marketKey} mark</span>
-          <TickValue value={mark} />
-        </div>
-        <div className="stat">
           <span className="label">Network</span>
           <span className="value">{DEPLOY.mode === "local" ? "Localhost" : "Coston2"}</span>
         </div>
       </div>
 
-      <div className="spacer" />
-
-      <button className="btn ghost sm" onClick={onHow}>How it works</button>
       {FEEDBACK_CONFIGURED && (
-        <a className="btn ghost sm" href={feedbackUrl(address)} target="_blank" rel="noreferrer">
+        <a className="btn ghost sm hide-sm" href={feedbackUrl(address)} target="_blank" rel="noreferrer">
           Feedback
         </a>
       )}

@@ -41,6 +41,16 @@ type Toggles = { ema: boolean; sma: boolean; bb: boolean; rsi: boolean };
 const EMA_PERIOD = 20;
 const SMA_PERIOD = 50;
 
+// Session stores at module scope: navigating between pages unmounts the chart,
+// and per-instance refs would throw away candle history, the user's DRAWINGS,
+// and their timeframe/indicator choices. These survive for the tab's lifetime.
+const candleCache = new Map<string, CacheEntry>();
+const drawingsStore = new Map<string, Drawings>();
+const uiPrefs: { tf: Timeframe; togg: Toggles } = {
+  tf: "15m",
+  togg: { ema: true, sma: false, bb: false, rsi: false },
+};
+
 export default function Chart({
   marketKey,
   mark,
@@ -64,16 +74,18 @@ export default function Chart({
   const trendPrimRef = useRef<TrendlinesPrimitive | null>(null);
 
   // data cache per market:tf, plus per-market drawings
-  const cacheRef = useRef(new Map<string, CacheEntry>());
-  const drawingsRef = useRef(new Map<string, Drawings>());
+  const cacheRef = useRef(candleCache);
+  const drawingsRef = useRef(drawingsStore);
   const hlineObjsRef = useRef<IPriceLine[]>([]);
   const posLineObjsRef = useRef<IPriceLine[]>([]);
   const shownRef = useRef<string>(""); // `${market}:${tf}` currently on screen
   const loadTokenRef = useRef(0);
   const pendingTrendRef = useRef<TrendPoint | null>(null);
 
-  const [tf, setTf] = useState<Timeframe>("15m");
-  const [togg, setTogg] = useState<Toggles>({ ema: true, sma: false, bb: false, rsi: false });
+  const [tf, setTfState] = useState<Timeframe>(uiPrefs.tf);
+  const setTf = (t: Timeframe) => { uiPrefs.tf = t; setTfState(t); };
+  const [togg, setToggState] = useState<Toggles>(uiPrefs.togg);
+  const setTogg = (fn: (t: Toggles) => Toggles) => setToggState((t) => { const n = fn(t); uiPrefs.togg = n; return n; });
   const [drawMode, setDrawMode] = useState<DrawMode>("none");
   const [source, setSource] = useState<Source>("synth");
   const [legend, setLegend] = useState<string>("");

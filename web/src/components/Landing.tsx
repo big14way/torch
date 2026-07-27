@@ -1,5 +1,6 @@
 import { useGlobalStats, fmtUsd6 } from "../lib/hooks";
 import { FDC } from "../lib/config";
+import { useRoute, Link } from "../lib/router";
 
 /** First-run landing, shown only while no wallet is connected.
  *
@@ -11,9 +12,8 @@ import { FDC } from "../lib/config";
 export default function Landing() {
   const { volume, positions } = useGlobalStats();
 
-  const scrollToApp = () => {
-    document.getElementById("terminal")?.scrollIntoView({ behavior: "smooth", block: "start" });
-  };
+  const { navigate } = useRoute();
+  const scrollToApp = () => navigate("/trade");
 
   return (
     <section className="landing">
@@ -114,7 +114,7 @@ export default function Landing() {
               ${fmtUsd6(volume)} notional routed across {positions} positions, all on-chain
             </li>
             <li>Season 1 of the trading league: 26 traders, 164 positions, zero fake numbers</li>
-            <li>House book published below: fund balance, payouts, and the cap, live</li>
+            <li>House book published on the <Link to="/verify">Verify page</Link>: fund balance, payouts, and the cap, live</li>
           </ul>
         </div>
       </div>
