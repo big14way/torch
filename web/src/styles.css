@@ -419,3 +419,45 @@ html, body { overflow-x: hidden; max-width: 100%; }
 .hb-cell b.low { color: var(--short); }
 .hb-cell span { display: block; color: var(--smoke-2); font-size: 10.5px; margin-top: 5px; line-height: 1.35; }
 .hb-note { margin-top: 12px; color: var(--smoke-2); font-size: 10.5px; line-height: 1.55; opacity: 0.9; }
+
+/* ------------------------------------------------------------- landing
+   First-run front door, shown only while no wallet is connected. */
+.landing { padding: 34px 0 10px; }
+.ld-hero h2 {
+  font-family: var(--font-display); font-size: clamp(28px, 5vw, 46px);
+  line-height: 1.05; margin: 0 0 14px; letter-spacing: -0.01em;
+}
+.ld-grad {
+  background: linear-gradient(96deg, var(--ember), var(--flare));
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+}
+.ld-sub { color: var(--smoke); font-size: 15px; line-height: 1.55; max-width: 660px; margin: 0 0 16px; }
+.ld-cta-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 26px; }
+.ld-cta-note { color: var(--smoke-2); font-size: 12px; }
+.ld-problem {
+  border-left: 3px solid var(--ember); padding: 10px 16px; margin-bottom: 22px;
+  background: rgba(255, 106, 43, 0.05); border-radius: 0 10px 10px 0; max-width: 760px;
+}
+.ld-problem b { display: block; font-size: 14px; margin-bottom: 4px; }
+.ld-problem span { color: var(--smoke); font-size: 13px; line-height: 1.55; }
+.ld-features { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin-bottom: 22px; }
+.ld-feat { background: var(--soot); border: var(--border); border-radius: 12px; padding: 16px; }
+.ld-feat-t { font-weight: 700; font-size: 14px; margin-bottom: 7px; color: var(--flare); }
+.ld-feat-d { color: var(--smoke); font-size: 13px; line-height: 1.55; }
+.ld-bottom { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; margin-bottom: 22px; }
+.ld-who, .ld-proof { background: var(--soot); border: var(--border); border-radius: 12px; padding: 16px; }
+.ld-who b, .ld-proof b { display: block; font-size: 12px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--smoke); margin-bottom: 9px; }
+.ld-who ul, .ld-proof ul { margin: 0; padding: 0; list-style: none; }
+.ld-who li, .ld-proof li { color: var(--smoke); font-size: 13px; line-height: 1.5; padding: 3px 0 3px 18px; position: relative; }
+.ld-who li::before, .ld-proof li::before { content: "\25B8"; position: absolute; left: 0; color: var(--ember); }
+.ld-close {
+  display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap;
+  border: var(--border); border-radius: 12px; padding: 14px 18px; background: var(--soot);
+}
+.ld-close span { color: var(--smoke); font-size: 13px; }
+
+/* faucet readiness cue */
+.readiness { display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; font-size: 11.5px; margin-top: 8px; font-family: var(--font-data); }
+.readiness .ok { color: var(--long); }
+.readiness .todo { color: var(--short); }
+.readiness .hint { color: var(--smoke-2); font-family: var(--font-ui); }

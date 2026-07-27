@@ -12,6 +12,7 @@ import HowItWorks from "./components/HowItWorks";
 import Stats from "./components/Stats";
 import Leaderboard from "./components/Leaderboard";
 import HouseBook from "./components/HouseBook";
+import Landing from "./components/Landing";
 import FeedbackNudge from "./components/FeedbackNudge";
 
 export default function App() {
@@ -27,11 +28,13 @@ export default function App() {
     <div className="app">
       <Header marketKey={marketKey} mark={mark as bigint | undefined} onHow={() => setShowHow(true)} />
 
+      {!address && <Landing />}
+
       <Stats />
 
       <FeedbackNudge positions={positions} />
 
-      <div className="grid">
+      <div className="grid" id="terminal">
         <div className="area-chart card">
           <div className="markettabs" role="tablist" aria-label="Markets">
             {DEPLOY.markets.map((m) => (

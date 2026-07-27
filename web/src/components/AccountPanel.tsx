@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useAccount, usePublicClient, useReadContract, useWriteContract } from "wagmi";
+import { useAccount, useBalance, usePublicClient, useReadContract, useWriteContract } from "wagmi";
 import { maxUint256, parseUnits, formatUnits } from "viem";
 import { DEPLOY, FXRP, VAULT } from "../lib/config";
 import { fmtFxrp, useFreeMargin, waitTx } from "../lib/hooks";
@@ -17,6 +17,10 @@ export default function AccountPanel() {
     query: { enabled: !!address, refetchInterval: 4000 },
   }) as { data: bigint | undefined; refetch: () => void };
 
+  const { data: gasBal } = useBalance({
+    address,
+    query: { refetchInterval: 15000 },
+  });
   const { data: allowance, refetch: refetchAllow } = useReadContract({
     ...FXRP,
     functionName: "allowance",
@@ -152,6 +156,25 @@ export default function AccountPanel() {
           <a className="btn primary wide" href="https://faucet.flare.network" target="_blank" rel="noreferrer" style={{ textAlign: "center" }}>
             Faucet: C2FLR gas + FXRP
           </a>
+        )}
+        {DEPLOY.mode === "coston2" && isConnected && (
+          <div className="readiness">
+            <span className={gasBal !== undefined && gasBal.value > 0n ? "ok" : "todo"}>
+              {gasBal !== undefined && gasBal.value > 0n ? "\u2713" : "\u2717"} C2FLR gas
+            </span>
+            <span className={walletBal !== undefined && walletBal > 0n ? "ok" : "todo"}>
+              {walletBal !== undefined && walletBal > 0n ? "\u2713" : "\u2717"} FXRP in wallet
+            </span>
+            <span className="hint">
+              {gasBal === undefined || gasBal.value === 0n
+                ? "claim C2FLR first, every tx needs gas"
+                : walletBal === undefined || walletBal === 0n
+                  ? "claim FTestXRP from the faucet dropdown, then deposit"
+                  : free !== undefined && free > 0n
+                    ? "ready, open a position above"
+                    : "ready, deposit to start"}
+            </span>
+          </div>
         )}
       </div>
 
