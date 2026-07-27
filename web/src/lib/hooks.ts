@@ -159,6 +159,50 @@ export function useGlobalStats() {
   };
 }
 
+/** The house book, in the open.
+ *
+ * Torch's insurance fund IS the counterparty to every trader: losses accrue to
+ * it, winners are paid from it, and the contract CAPS a winner's profit at the
+ * fund balance (TorchVault._settle). That cap is a real property of the system,
+ * so it is published here rather than left for someone to discover.
+ *
+ * Everything below is derived from the same position set the rest of the app
+ * already reads — no extra RPC. Fee figures are the USD amounts the contract
+ * computes from notional (exact, since sizeUsd6 is USD); they are what traders
+ * were charged. */
+export function useHouseBook() {
+  const { positions: all } = useAllPositions();
+  const { insurance, openInterest } = useGlobalStats();
+
+  let absorbed = 0n; // trader losses that accrued to the fund (FXRP)
+  let paidOut = 0n; // profit paid to winners out of the fund (FXRP)
+  let feesUsd6 = 0n; // open + close/liquidation fees charged, in USD
+  let settled = 0;
+
+  for (const p of all) {
+    if (p.entryPrice6 === 0n) continue; // never filled: no fee, no PnL
+    const s = Number(p.status);
+    feesUsd6 += (p.sizeUsd6 * 8n) / 10_000n; // open fee, charged on every fill
+    if (s !== 4 && s !== 5) continue; // not settled yet
+    settled += 1;
+    feesUsd6 += (p.sizeUsd6 * (s === 5 ? 100n : 8n)) / 10_000n; // close or liquidation
+    if (p.pnlFxrp < 0n) {
+      // losses are capped at the margin the trader posted
+      const loss = -p.pnlFxrp;
+      absorbed += loss > p.marginFxrp ? p.marginFxrp : loss;
+    } else {
+      paidOut += p.pnlFxrp;
+    }
+  }
+
+  // How much of the current open book the fund could cover if every open
+  // position closed at a full win. Below 100% the cap can bind.
+  const coverageBps =
+    openInterest > 0n ? Number((insurance * 10_000n) / openInterest) : null;
+
+  return { insurance, absorbed, paidOut, feesUsd6, settled, openInterest, coverageBps };
+}
+
 // Paper Perps League window (unix seconds, UTC). 0 = all-time.
 // Season 1: Jul 7 00:00 -> Jul 21 23:59:59 UTC (final board archived in the S1 wrap thread).
 // Season 2: Wed Jul 22 2026 00:00 UTC -> Wed Aug 5 2026 23:59:59 UTC.

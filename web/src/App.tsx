@@ -11,6 +11,7 @@ import RouteTrace from "./components/RouteTrace";
 import HowItWorks from "./components/HowItWorks";
 import Stats from "./components/Stats";
 import Leaderboard from "./components/Leaderboard";
+import HouseBook from "./components/HouseBook";
 import FeedbackNudge from "./components/FeedbackNudge";
 
 export default function App() {
@@ -62,6 +63,8 @@ export default function App() {
           <AccountPanel />
         </div>
       </div>
+
+      <HouseBook />
 
       <Leaderboard />
 

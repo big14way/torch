@@ -11,7 +11,7 @@ Built for the Flare Summer Signal hackathon, entering both bounties:
 - Interoperable Asset Products: FXRP margin on Flare routed to external Hyperliquid liquidity
 - Confidential Compute Apps: a TEE-held executor key with a no-withdrawal exchange wallet, migrating onto Flare Confidential Compute as a Flare Confidential Extension (FCE); Protocol Managed Wallets are the later endgame once they ship
 
-The XRP community holds one of the largest idle asset bases in crypto, and today there is no way to use XRP itself as perps margin on a deep orderbook. Hyperliquid margins in USDC only. Torch closes that gap: FXRP in, Hyperliquid depth out, settlement bounded by Flare's enshrined FTSOv2 oracle.
+The XRP community holds one of the largest idle asset bases in crypto. FXRP-margined perps do already exist on Flare — [SparkDEX Eternal](https://flare.network/news/sparkdex-eternal-brings-perpetuals-to-flare) takes FXRP as collateral — so the gap Torch closes is not "can you trade with XRP" but **"can you check that the trade was honest."** Torch routes FXRP margin to Hyperliquid's orderbook depth and makes every leg verifiable: settlement bounded on-chain by Flare's enshrined FTSOv2 (the tx reverts if the price is off), the signing key sealed in an attested TEE, and fills re-proven on-chain by Flare's own validators through FDC. You do not have to trust the operator, including us.
 
 ## How it works
 
