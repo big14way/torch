@@ -49,7 +49,7 @@ export default function App() {
   }, [path, mark, marketKey]);
 
   return (
-    <div className="app">
+    <div className={path === "/trade" ? "app app-terminal" : "app"}>
       <Header />
 
       {path === "/league" ? (
@@ -168,20 +168,19 @@ export default function App() {
               <Chart marketKey={marketKey} mark={mark as bigint | undefined} positions={positions} />
             </div>
 
-            <div className="area-ticket">
-              <Ticket marketKey={marketKey} mark={mark as bigint | undefined} />
-            </div>
-
             <div className="area-positions card">
               <h2>Positions</h2>
               <Positions positions={positions} />
             </div>
 
             <div className="area-rail">
-              <AccountPanel />
-              <RouteTrace positions={positions} />
-              <div className="verify-nudge">
-                Every claim above is checkable. <Link to="/verify">Verify →</Link>
+              <Ticket marketKey={marketKey} mark={mark as bigint | undefined} />
+              <div className="rail-scroll">
+                <AccountPanel />
+                <RouteTrace positions={positions} />
+                <div className="verify-nudge">
+                  Every claim above is checkable. <Link to="/verify">Verify →</Link>
+                </div>
               </div>
             </div>
           </div>

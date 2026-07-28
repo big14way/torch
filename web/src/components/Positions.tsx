@@ -62,7 +62,7 @@ export default function Positions({ positions }: { positions: Position[] | undef
   }
 
   return (
-    <div style={{ overflowX: "auto" }}>
+    <div style={{ overflow: "auto", flex: 1, minHeight: 0 }}>
       <table className="table">
         <thead>
           <tr>

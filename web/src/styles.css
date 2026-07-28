@@ -131,29 +131,9 @@ a:hover { text-decoration: underline; }
 .btn.sm { padding: 5px 10px; font-size: 12px; border-radius: 7px; }
 
 /* ------------------------------------------------------------------ layout */
-.grid {
-  display: grid; gap: 14px; margin-top: 14px;
-  grid-template-columns: minmax(0, 1fr) 372px;
-  grid-template-areas:
-    "chart ticket"
-    "positions rail";
-}
 .area-chart { grid-area: chart; }
-.area-ticket { grid-area: ticket; }
 .area-positions { grid-area: positions; }
 .area-rail { grid-area: rail; display: flex; flex-direction: column; gap: 14px; }
-
-@media (max-width: 980px) {
-  .grid {
-    /* minmax(0, 1fr), not 1fr: 1fr = minmax(auto,1fr), which forbids items
-       shrinking below their content min-width, so the chart canvas widened the
-       whole column and clipped everything on mobile. */
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-areas: "ticket" "chart" "rail" "positions";
-  }
-  /* grid/flex children default to min-width:auto; zero it so they can shrink */
-  .area-chart, .area-ticket, .area-positions, .area-rail { min-width: 0; }
-}
 
 .card {
   background: var(--soot);
@@ -179,7 +159,7 @@ a:hover { text-decoration: underline; }
   color: var(--bone); border-color: var(--ember);
   background: rgba(255, 106, 43, 0.08);
 }
-.chartbox { height: 380px; border-radius: 10px; overflow: hidden; }
+.chartbox { border-radius: 10px; overflow: hidden; }
 .chartbox.drawing { cursor: crosshair; }
 .chart-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 6px; flex-wrap: wrap; }
 .chart-head .px { font-family: var(--font-data); font-size: 26px; font-weight: 600; }
@@ -490,22 +470,68 @@ html, body { overflow-x: hidden; max-width: 100%; }
   white-space: nowrap; cursor: help;
 }
 
-/* trade grid: chart left (fills), ticket+account+trace right, positions full width */
-.grid {
-  grid-template-columns: minmax(0, 1fr) 372px;
-  grid-template-areas:
-    "chart ticket"
-    "chart rail"
-    "positions positions";
+/* trade terminal: viewport-locked, the pattern every major perps venue ships
+   (Jupiter/dYdX): chart takes the leftover height, positions keep a bounded
+   row under the chart only, the ticket rail runs full height on the right and
+   scrolls internally. Only /trade gets .app-terminal; other pages keep normal
+   document flow. Every layer between the shell and a scrolling panel needs
+   min-height:0 or the flex min-content default reinflates the page. */
+.app-terminal {
+  max-width: 1600px;
+  padding: 0 20px 8px;
+  height: 100vh; /* fallback for browsers without dvh */
+  height: 100dvh;
+  min-height: 870px; /* below this the body scrolls; the chart never shrinks past its floor */
+  display: flex;
+  flex-direction: column;
 }
-.area-chart { display: flex; flex-direction: column; }
-.area-chart .chartbox { flex: 1; min-height: 380px; }
+.app-terminal > .header { flex: none; }
+.app-terminal main { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; }
+.app-terminal main > * { flex: none; min-width: 0; }
+.app-terminal main > .grid { flex: 1 1 0; min-height: 0; }
+.app-terminal .footer { flex: none; margin-top: 10px; }
+
+.grid {
+  display: grid; gap: 14px; margin-top: 14px;
+  grid-template-columns: minmax(0, 1fr) 372px;
+  grid-template-rows: minmax(0, 1fr) clamp(200px, 24vh, 280px);
+  grid-template-areas:
+    "chart     rail"
+    "positions rail";
+}
+.area-chart { display: flex; flex-direction: column; min-height: 0; }
+.area-chart .chartbox { flex: 1 1 0; min-height: 340px; }
+.area-rail { min-height: 0; overflow: hidden; }
+.area-rail > :first-child { flex: none; }
+.rail-scroll {
+  flex: 1 1 0; min-height: 0; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 14px;
+  overscroll-behavior: contain;
+}
+.area-positions { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.area-positions h2 { flex: none; }
+.area-positions .table thead th {
+  position: sticky; top: 0; z-index: 1;
+  background: var(--soot); /* opaque, or rows ghost through while scrolling */
+}
 @media (max-width: 980px) {
+  /* stacked flow: drop the viewport lock entirely, the body scrolls */
+  .app-terminal { height: auto; min-height: 0; display: block; max-width: 1360px; padding-bottom: 40px; }
+  .app-terminal main { display: block; }
   .grid {
+    /* minmax(0,1fr), not 1fr: 1fr = minmax(auto,1fr), which forbids items
+       shrinking below their content min-width — the chart canvas would widen
+       the column and clip everything on mobile. */
     grid-template-columns: minmax(0, 1fr);
-    grid-template-areas: "chart" "ticket" "positions" "rail";
+    grid-template-rows: auto;
+    grid-template-areas: "chart" "rail" "positions";
   }
-  .area-chart .chartbox { min-height: 300px; }
+  /* grid/flex children default to min-width:auto; zero it so they can shrink */
+  .area-chart, .area-positions, .area-rail { min-width: 0; }
+  .area-chart .chartbox { flex: none; height: 340px; min-height: 0; }
+  .area-rail { overflow: visible; }
+  .rail-scroll { flex: none; overflow: visible; }
+  .area-positions { display: block; overflow: visible; }
   .hide-sm { display: none; }
   .mainnav { margin-left: 4px; }
   .mainnav a { padding: 8px 8px 10px; }
