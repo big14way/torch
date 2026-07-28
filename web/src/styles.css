@@ -544,3 +544,7 @@ html, body { overflow-x: hidden; max-width: 100%; }
 .ph-sub { color: var(--smoke); font-size: 14px; line-height: 1.55; max-width: 640px; margin: 0 0 14px; }
 .ph-actions { display: flex; gap: 10px; flex-wrap: wrap; }
 .ph-actions .btn { text-decoration: none; }
+/* Chart's own wrapper must pass the card's height down to the canvas —
+   without this the card stretches (grid row span) but the chart doesn't,
+   leaving dead space under the candles. */
+.area-chart > div:last-child { display: flex; flex-direction: column; flex: 1; min-height: 0; }
