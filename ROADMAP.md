@@ -12,6 +12,9 @@ What's live, what's next, and what's proven — driven largely by real tester fe
 - Paper Perps League **Season 2** (Jul 22 – Aug 5, top 10 paid), Hall of Flame leaderboard, in-app feedback, mobile wallet connect
 - Loop-health telemetry: the enclave status endpoint reports heartbeat age, cycle count, and a low-gas flag, so "idle" and "wedged" are distinguishable from outside
 
+## Proven (Jul 29): one XRPL signature funds Torch margin
+Flare Smart Accounts' custom-instruction flow reached TorchVault with **zero contract changes**: a plain XRPL testnet wallet signed a single ~10.3 XRP payment with a 42-byte memo, Flare's Data Connector attested it, and one Coston2 transaction atomically minted FXRP to the user's CREATE2-derived PersonalAccount, approved, and deposited **10 FXRP of trading margin** — no EVM wallet, no gas, no bridge. Receipts: [XRPL tx](https://testnet.xrpl.org/transactions/BE8301336DA71C7B488BDC0C1006051599E439D50FC2F492CB334659766B94F7) → [Coston2 execute tx](https://coston2-explorer.flare.network/tx/0xbaf5241608039406d307cdb46a6fcd1a55ad42b3fd31608bf077dd12b0298fee). Details + reproduce steps in [`spikes/fsa-one-signature-margin/`](spikes/fsa-one-signature-margin/README.md). The vault's smart-account cleanliness is locked in by test (`contracts/test/smartAccount.test.ts`). An XRPL-wallet funding UX built on this is a post-hackathon item; the rail itself is proven.
+
 ## Proven (Jul 22): the enclave trades the real book
 The full differentiating loop has now run end-to-end from attested hardware: the enclave-held key placed and closed a **real Hyperliquid testnet order** (BTC, oids 56855249387 / 56855250250), and Flare's Data Connector independently re-fetched and verified that exact fill on-chain — [tx 0xe2798ac7…57c01](https://coston2-explorer.flare.network/tx/0xe2798ac7031802b535ec2a52f844a2c811021b496151ba21405ece9dc3257c01). The league loop still fills at the FTSO mark (deliberately, until the season ends); flipping production to real exchange execution is now a config change, not a research question.
 
@@ -24,6 +27,7 @@ The full differentiating loop has now run end-to-end from attested hardware: the
 - **Partial-fill handling** and **FDC on every settlement** (not spot-checked) ride the v2 line.
 
 ## Horizon
+- **XRPL-wallet funding UX on Flare Smart Accounts.** The rail is already proven end-to-end (see Jul 29 above); what remains is product: let a Xaman/Ledger/Joey user fund and withdraw Torch margin from their XRP wallet, with the TEE agent doing the fast part in between. FSA's FDC-bound latency (~2–5 min per action) suits funding, not tick-level trading — which is exactly the division of labor Torch already has.
 - **Port the executor to a Flare Confidential Extension (FCE).** Per Flare-team guidance this replaces "wait for PMWs" as the decentralization path available now: the executor runs on Flare's own confidential-compute stack (approved for Songbird via STP.13, Jul 12 2026), its code hash pinned on-chain in the TeeExtensionRegistry, instructions signed by Flare's data providers. Reference: [flare-foundation/fce-orderbook](https://github.com/flare-foundation/fce-orderbook).
 - **Mainnet pilot** with FXRP margin, tight caps, real Hyperliquid execution with a builder code attached.
 - **Protocol Managed Wallets** remain the endgame once they ship (still in development): the executor role moves to the protocol quorum entirely. The vault contract does not change — it only ever knew an executor address.

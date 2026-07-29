@@ -129,6 +129,24 @@ export default function App() {
                 </li>
               )}
               <li>
+                Margin funded from a bare XRPL wallet, one signature, via Flare Smart Accounts:{" "}
+                <a
+                  href="https://testnet.xrpl.org/transactions/BE8301336DA71C7B488BDC0C1006051599E439D50FC2F492CB334659766B94F7"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  the XRPL signature
+                </a>{" "}
+                →{" "}
+                <a
+                  href="https://coston2-explorer.flare.network/tx/0xbaf5241608039406d307cdb46a6fcd1a55ad42b3fd31608bf077dd12b0298fee"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  one Coston2 tx: mint, approve, deposit
+                </a>
+              </li>
+              <li>
                 TorchVault (source-verified):{" "}
                 <a
                   href={`https://coston2-explorer.flare.network/address/${DEPLOY.vault}`}

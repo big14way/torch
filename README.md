@@ -150,6 +150,10 @@ The endgame of the trust model is that a fill is not believed because our execut
 - Anyone can reproduce either: `npm run fdc:attest -w contracts` (latest fill) or `POSITION_ID=10 npm run fdc:attest -w contracts` (position-bound). The flow: prepare the request at the FDC verifier, submit to `FdcHub`, wait the voting round (~2-3 min), pull the Merkle proof from the DA layer, then the consumer verifies it through `ContractRegistry.getFdcVerification()`.
 - Kept out of the `confirmFill` hot path on purpose: a round trip is ~2 min plus a fee, so requiring an inline proof on every fill would stall the live loop. Attestation is the settlement-verification path — any fill backed by a real exchange order id can be proven after the fact, by anyone, without trusting us. (Mock-mode fills carry internal sequence ids and are not attestable; the FDC path applies to exchange-routed fills.)
 
+**Flare Smart Accounts (Jul 29 2026): margin funded from a bare XRPL wallet.**
+
+An XRPL testnet wallet signed **one** payment carrying a 42-byte memo; FDC attested it; one Coston2 transaction then atomically minted FXRP to the user's CREATE2-derived PersonalAccount, approved, and deposited 10 FXRP of margin into TorchVault. No EVM wallet, no gas held by the user, no bridge UI, zero vault changes — the vault is `msg.sender`-keyed with no EOA assumptions (locked in by `contracts/test/smartAccount.test.ts`). Receipts: [the XRPL signature](https://testnet.xrpl.org/transactions/BE8301336DA71C7B488BDC0C1006051599E439D50FC2F492CB334659766B94F7) → [the Coston2 execute tx](https://coston2-explorer.flare.network/tx/0xbaf5241608039406d307cdb46a6fcd1a55ad42b3fd31608bf077dd12b0298fee). Write-up and reproduce steps: [`spikes/fsa-one-signature-margin/`](spikes/fsa-one-signature-margin/README.md).
+
 To reproduce the deployment from scratch:
 
 1. Get C2FLR gas and testnet FXRP from the Coston2 faucet: https://faucet.flare.network
