@@ -47,17 +47,38 @@ export default function Header() {
   const { data: xrpPx } = useXrpPrice();
 
   const wrongNet = isConnected && chainId !== ACTIVE_CHAIN.id;
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   // Mobile browsers have no injected provider (that only exists on desktop
-  // extensions and inside wallet in-app browsers). Prefer injected when it's
-  // there, else WalletConnect's wallet picker, else deep-link into MetaMask's
-  // in-app browser so phone users aren't dead-ended.
-  const hasInjected =
-    typeof window !== "undefined" && !!(window as { ethereum?: unknown }).ethereum;
+  // extensions and inside wallet in-app browsers). When both the extension and
+  // WalletConnect are available, offer the choice — auto-grabbing the extension
+  // hijacks users who wanted a different wallet. With a single option, connect
+  // straight through; with none, deep-link into MetaMask's in-app browser.
+  const eth =
+    typeof window !== "undefined"
+      ? (window as { ethereum?: { isMetaMask?: boolean } }).ethereum
+      : undefined;
+  const hasInjected = !!eth;
   const wcConnector = connectors.find((c) => c.id === "walletConnect");
-  const connectWith = hasInjected
-    ? (connectors.find((c) => c.id === "injected") ?? connectors[0])
-    : (wcConnector ?? connectors[0]);
+  const injectedConnector = connectors.find((c) => c.id === "injected");
+  const choices = [
+    ...(hasInjected && injectedConnector
+      ? [
+          {
+            connector: injectedConnector,
+            label: eth?.isMetaMask ? "MetaMask" : "Browser wallet",
+            hint: "extension in this browser",
+          },
+        ]
+      : []),
+    ...(wcConnector
+      ? [{ connector: wcConnector, label: "WalletConnect", hint: "QR code / mobile wallets" }]
+      : []),
+  ];
+  const pick = (connector: (typeof connectors)[number]) => {
+    setPickerOpen(false);
+    connect({ connector });
+  };
   const metamaskDeepLink =
     typeof window !== "undefined"
       ? `https://metamask.app.link/dapp/${window.location.host}${window.location.pathname}`
@@ -109,11 +130,35 @@ export default function Header() {
             Disconnect
           </button>
         </>
-      ) : hasInjected || wcConnector ? (
+      ) : choices.length > 1 ? (
+        <div className="wallet-pick">
+          <button
+            className="btn primary"
+            disabled={isPending}
+            aria-expanded={pickerOpen}
+            onClick={() => setPickerOpen((v) => !v)}
+          >
+            {isPending ? "Connecting..." : "Connect wallet"}
+          </button>
+          {pickerOpen && (
+            <>
+              <div className="wallet-backdrop" onClick={() => setPickerOpen(false)} />
+              <div className="wallet-menu" role="menu">
+                {choices.map((c) => (
+                  <button key={c.connector.uid} role="menuitem" onClick={() => pick(c.connector)}>
+                    {c.label}
+                    <span>{c.hint}</span>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      ) : choices.length === 1 ? (
         <button
           className="btn primary"
-          disabled={isPending || !connectWith}
-          onClick={() => connectWith && connect({ connector: connectWith })}
+          disabled={isPending}
+          onClick={() => pick(choices[0].connector)}
         >
           {isPending ? "Connecting..." : "Connect wallet"}
         </button>
