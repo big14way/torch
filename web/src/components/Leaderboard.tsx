@@ -1,5 +1,4 @@
-import { useAccount } from "wagmi";
-import { fmtFxrp, fmtUsd6, useLeaderboard, LEAGUE_DATES, LEAGUE_PRIZE, LEAGUE_SEASON, type LeagueRow } from "../lib/hooks";
+import { fmtFxrp, fmtUsd6, useEffectiveAccount, useLeaderboard, LEAGUE_DATES, LEAGUE_PRIZE, LEAGUE_SEASON, type LeagueRow } from "../lib/hooks";
 
 const RANK = ["#1", "#2", "#3"];
 const TOP = 10;
@@ -38,7 +37,7 @@ function Row({ r, rank, isYou }: { r: LeagueRow; rank: number; isYou: boolean })
  * purpose (the league posts a leaderboard image twice a week). */
 export default function Leaderboard() {
   const { rows, loading, preSeason } = useLeaderboard();
-  const { address } = useAccount();
+  const { address } = useEffectiveAccount();
 
   const isYou = (r: LeagueRow) => !!address && r.owner.toLowerCase() === address.toLowerCase();
   const myIndex = rows.findIndex(isYou);

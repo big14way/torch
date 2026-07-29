@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useAccount, useConnect, useDisconnect, useSwitchChain } from "wagmi";
 import { ACTIVE_CHAIN, DEPLOY, FEEDBACK_CONFIGURED, feedbackUrl } from "../lib/config";
 import { fmtPx, useXrpPrice } from "../lib/hooks";
+import { stopWatching, useWatch, watchAccount } from "../lib/watch";
 import { Link } from "../lib/router";
 
 function Flame() {
@@ -48,6 +49,33 @@ export default function Header() {
 
   const wrongNet = isConnected && chainId !== ACTIVE_CHAIN.id;
   const [pickerOpen, setPickerOpen] = useState(false);
+  const watch = useWatch();
+
+  // XRPL users (Flare Smart Accounts) have no EVM key to sign with, but their
+  // account is plain vault state under a derivable address — offer view access.
+  const [xrplForm, setXrplForm] = useState(false);
+  const [xrplInput, setXrplInput] = useState("");
+  const [xrplBusy, setXrplBusy] = useState(false);
+  const [xrplErr, setXrplErr] = useState<string | null>(null);
+  const xrplOption = DEPLOY.mode === "coston2";
+  const closePicker = () => {
+    setPickerOpen(false);
+    setXrplForm(false);
+    setXrplErr(null);
+  };
+  const submitXrpl = async () => {
+    setXrplBusy(true);
+    setXrplErr(null);
+    try {
+      await watchAccount(xrplInput);
+      setXrplInput("");
+      closePicker();
+    } catch (e) {
+      setXrplErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setXrplBusy(false);
+    }
+  };
 
   // Mobile browsers have no injected provider (that only exists on desktop
   // extensions and inside wallet in-app browsers). When both the extension and
@@ -76,9 +104,10 @@ export default function Header() {
       : []),
   ];
   const pick = (connector: (typeof connectors)[number]) => {
-    setPickerOpen(false);
+    closePicker();
     connect({ connector });
   };
+  const menuNeeded = choices.length + (xrplOption ? 1 : 0) > 1;
   const metamaskDeepLink =
     typeof window !== "undefined"
       ? `https://metamask.app.link/dapp/${window.location.host}${window.location.pathname}`
@@ -130,30 +159,73 @@ export default function Header() {
             Disconnect
           </button>
         </>
-      ) : choices.length > 1 ? (
-        <div className="wallet-pick">
-          <button
-            className="btn primary"
-            disabled={isPending}
-            aria-expanded={pickerOpen}
-            onClick={() => setPickerOpen((v) => !v)}
-          >
-            {isPending ? "Connecting..." : "Connect wallet"}
-          </button>
-          {pickerOpen && (
+      ) : menuNeeded ? (
+        <>
+          {watch && (
             <>
-              <div className="wallet-backdrop" onClick={() => setPickerOpen(false)} />
-              <div className="wallet-menu" role="menu">
-                {choices.map((c) => (
-                  <button key={c.connector.uid} role="menuitem" onClick={() => pick(c.connector)}>
-                    {c.label}
-                    <span>{c.hint}</span>
-                  </button>
-                ))}
-              </div>
+              <span className="pill" title={watch.rAddress ?? watch.address}>
+                <span className="dot watch" />
+                {(watch.rAddress ?? watch.address).slice(0, 6)}...
+                {(watch.rAddress ?? watch.address).slice(-4)} view
+              </span>
+              <button className="btn ghost sm" onClick={stopWatching}>
+                Stop
+              </button>
             </>
           )}
-        </div>
+          <div className="wallet-pick">
+            <button
+              className="btn primary"
+              disabled={isPending}
+              aria-expanded={pickerOpen}
+              onClick={() => (pickerOpen ? closePicker() : setPickerOpen(true))}
+            >
+              {isPending ? "Connecting..." : "Connect wallet"}
+            </button>
+            {pickerOpen && (
+              <>
+                <div className="wallet-backdrop" onClick={closePicker} />
+                <div className="wallet-menu" role="menu">
+                  {!xrplForm ? (
+                    <>
+                      {choices.map((c) => (
+                        <button key={c.connector.uid} role="menuitem" onClick={() => pick(c.connector)}>
+                          {c.label}
+                          <span>{c.hint}</span>
+                        </button>
+                      ))}
+                      {xrplOption && (
+                        <button role="menuitem" onClick={() => setXrplForm(true)}>
+                          XRP Ledger wallet
+                          <span>view your Flare Smart Account, read-only</span>
+                        </button>
+                      )}
+                    </>
+                  ) : (
+                    <div className="wallet-xrpl">
+                      <input
+                        aria-label="XRPL or 0x address"
+                        placeholder="rXXXX... or 0x..."
+                        value={xrplInput}
+                        autoFocus
+                        onChange={(e) => setXrplInput(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && !xrplBusy && submitXrpl()}
+                      />
+                      <button className="btn primary sm" disabled={xrplBusy || !xrplInput.trim()} onClick={submitXrpl}>
+                        {xrplBusy ? "Deriving..." : "View account"}
+                      </button>
+                      {xrplErr && <div className="wallet-xrpl-err">{xrplErr}</div>}
+                      <div className="wallet-xrpl-hint">
+                        Your XRPL address maps to a Flare Smart Account. Viewing is instant;
+                        funding it happens from your XRPL wallet.
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        </>
       ) : choices.length === 1 ? (
         <button
           className="btn primary"

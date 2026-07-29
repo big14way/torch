@@ -1,8 +1,24 @@
 import { useRef } from "react";
-import { useReadContract, useReadContracts } from "wagmi";
+import { useAccount, useReadContract, useReadContracts } from "wagmi";
 import { keepPreviousData } from "@tanstack/react-query";
 import { hexToString } from "viem";
 import { VAULT, DEPLOY, type Position } from "./config";
+import { useWatch } from "./watch";
+
+/** The address the UI is looking at: the connected wallet when there is one,
+ * else a watched account (an XRPL user's Smart Account, view-only). Writes
+ * must still gate on isConnected — watching carries no signing ability. */
+export function useEffectiveAccount() {
+  const { address, isConnected } = useAccount();
+  const watch = useWatch();
+  const watching = !isConnected && !!watch;
+  return {
+    address: isConnected ? address : watch?.address,
+    isConnected,
+    watching,
+    watchLabel: watching ? (watch?.rAddress ?? watch?.address ?? null) : null,
+  };
+}
 
 /** Coston2's receipt endpoint lags behind the chain; viem's default retry
  * gives up first and throws "Transaction receipt ... could not be found" for

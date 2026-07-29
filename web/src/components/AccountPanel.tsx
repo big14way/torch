@@ -1,11 +1,11 @@
 import { useState } from "react";
-import { useAccount, useBalance, usePublicClient, useReadContract, useWriteContract } from "wagmi";
+import { useBalance, usePublicClient, useReadContract, useWriteContract } from "wagmi";
 import { maxUint256, parseUnits, formatUnits } from "viem";
 import { DEPLOY, FXRP, VAULT } from "../lib/config";
-import { fmtFxrp, useFreeMargin, waitTx } from "../lib/hooks";
+import { fmtFxrp, useEffectiveAccount, useFreeMargin, waitTx } from "../lib/hooks";
 
 export default function AccountPanel() {
-  const { address, isConnected } = useAccount();
+  const { address, isConnected, watching } = useEffectiveAccount();
   const publicClient = usePublicClient();
   const { writeContractAsync } = useWriteContract();
   const { data: free } = useFreeMargin(address);
@@ -185,7 +185,15 @@ export default function AccountPanel() {
         </div>
       )}
 
-      {DEPLOY.mode === "coston2" && !overWallet && (
+      {watching && (
+        <div className="notice">
+          Viewing a Flare Smart Account, read-only. It is driven from the XRP Ledger, so
+          deposits and withdrawals happen from the owner's XRPL wallet. To trade from this
+          page, connect an EVM wallet.
+        </div>
+      )}
+
+      {DEPLOY.mode === "coston2" && !overWallet && !watching && (
         <div className="notice">
           Need FXRP? Claim C2FLR for gas + <b>FTestXRP</b> from the{" "}
           <a href="https://faucet.flare.network" target="_blank" rel="noreferrer">

@@ -1,14 +1,14 @@
 import { useMemo, useState } from "react";
-import { useAccount, usePublicClient, useWriteContract } from "wagmi";
+import { usePublicClient, useWriteContract } from "wagmi";
 import { parseUnits } from "viem";
 import { DEPLOY, VAULT } from "../lib/config";
-import { fmtFxrp, fmtPx, useFreeMargin, useXrpPrice, waitTx } from "../lib/hooks";
+import { fmtFxrp, fmtPx, useEffectiveAccount, useFreeMargin, useXrpPrice, waitTx } from "../lib/hooks";
 
 const MAINTENANCE = 0.05; // mirrors maintenanceMarginBps = 500
 const MIN_NOTIONAL_USD = 10; // Hyperliquid rejects orders under ~$10 notional
 
 export default function Ticket({ marketKey, mark }: { marketKey: string; mark: bigint | undefined }) {
-  const { address, isConnected } = useAccount();
+  const { address, isConnected, watching } = useEffectiveAccount();
   const { data: free } = useFreeMargin(address);
   const { data: xrpPx } = useXrpPrice();
   const { writeContractAsync, isPending } = useWriteContract();
@@ -177,7 +177,9 @@ export default function Ticket({ marketKey, mark }: { marketKey: string; mark: b
           onClick={submit}
         >
           {!isConnected
-            ? "Connect wallet first"
+            ? watching
+              ? "View-only. Connect an EVM wallet to trade"
+              : "Connect wallet first"
             : needsDeposit
               ? "Deposit margin first"
               : insufficient

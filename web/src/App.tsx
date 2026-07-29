@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useAccount } from "wagmi";
 import { DEPLOY, FDC } from "./lib/config";
-import { fmtPx, useMarkPrice, usePositions } from "./lib/hooks";
+import { fmtPx, useEffectiveAccount, useMarkPrice, usePositions } from "./lib/hooks";
 import { useRoute, Link } from "./lib/router";
 import Header from "./components/Header";
 import Chart from "./components/Chart";
@@ -21,18 +21,20 @@ export default function App() {
   const { path, navigate } = useRoute();
   const [marketKey, setMarketKey] = useState<string>(DEPLOY.markets[0]?.key ?? "XRP");
   const { address, status } = useAccount();
+  const { address: viewAddress, watching } = useEffectiveAccount();
 
   const market = DEPLOY.markets.find((m) => m.key === marketKey)!;
   const { data: mark } = useMarkPrice(market.id);
-  const { data: positions } = usePositions(address);
+  const { data: positions } = usePositions(viewAddress);
 
   // Returning connected traders land on the terminal, not the marketing page.
   // Gate on wagmi's reconnect settling first, or the landing flashes (and this
   // redirect would bounce every trader through it) on each hard refresh.
+  // Watchers (XRPL smart-account viewers) get the same treatment.
   useEffect(() => {
-    if (path === "/" && address && status === "connected") navigate("/trade");
+    if (path === "/" && ((address && status === "connected") || watching)) navigate("/trade");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [path, address, status]);
+  }, [path, address, status, watching]);
 
   // Live tab titles: a ticking price on /trade reads as a real terminal from
   // the tab bar alone.
