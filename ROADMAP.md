@@ -25,9 +25,9 @@ The full differentiating loop has now run end-to-end from attested hardware: the
   - Insurance-fund sweep + fresh seeding; owner escape hatches identified in the July audit.
 - **Aug 6+, production flip to real Hyperliquid execution** (`EXECUTION_MODE=testnet`) on the proven node-22, digest-pinned image — never mid-league.
 - **Partial-fill handling** and **FDC on every settlement** (not spot-checked) ride the v2 line.
+- **Aug 7–11, stretch (only if v2 and the demo video land early): "Fund from your XRP wallet."** The guided version of the Jul 29 proof: the UI builds the Smart Accounts instruction, your XRPL wallet signs one payment (QR / Xaman), and the enclave agent runs the permissionless executor leg that lands margin on Flare. Design: [`spikes/fsa-one-signature-margin/FUNDING_FLOW.md`](spikes/fsa-one-signature-margin/FUNDING_FLOW.md). If the window closes, this moves to the top of post-hackathon work, not out of it.
 
 ## Horizon
-- **XRPL-wallet funding UX on Flare Smart Accounts.** The rail is already proven end-to-end (see Jul 29 above); what remains is product: let a Xaman/Ledger/Joey user fund and withdraw Torch margin from their XRP wallet, with the TEE agent doing the fast part in between. FSA's FDC-bound latency (~2–5 min per action) suits funding, not tick-level trading — which is exactly the division of labor Torch already has.
 - **Port the executor to a Flare Confidential Extension (FCE).** Per Flare-team guidance this replaces "wait for PMWs" as the decentralization path available now: the executor runs on Flare's own confidential-compute stack (approved for Songbird via STP.13, Jul 12 2026), its code hash pinned on-chain in the TeeExtensionRegistry, instructions signed by Flare's data providers. Reference: [flare-foundation/fce-orderbook](https://github.com/flare-foundation/fce-orderbook).
 - **Mainnet pilot** with FXRP margin, tight caps, real Hyperliquid execution with a builder code attached.
 - **Protocol Managed Wallets** remain the endgame once they ship (still in development): the executor role moves to the protocol quorum entirely. The vault contract does not change — it only ever knew an executor address.
