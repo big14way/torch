@@ -16,7 +16,13 @@ Scope: `TorchVaultV2.sol` (deploys Aug 6), `TorchVault.sol` (live), `TorchFdcCon
 - `1c1ddbf`: agent stops retrying doomed fills after 5 attempts (was unbounded, ~1200 fee-paying round trips an hour), liquidation failures are logged and counted instead of swallowed, the heartbeat and status endpoint report a stalled loop (503) instead of green, and the build is reproducible (`agent/package-lock.json` + `npm ci`).
 - `24da1f6`: 13 tests for TorchFdcConsumer, covering both what the attestation proves and what it deliberately does not. **46 passing overall.**
 
-**Still open:** partial fills create unhedged exposure (`exchange.ts` ignores `totalSz`); restart mid-operation can double-fill (`inFlight` is in-memory, no client order id); `cancelRequest` remains a free option against the hedge once real execution is on; the Hyperliquid account in the FDC consumer is a compile-time constant with no rotation path; `:latest` still needs pinning to a digest **after** CI rebuilds the image from these agent changes.
+- `f108b93`: the three pre-flip gaps. Partial fills are detected and unwound instead of becoming unhedged exposure; orders carry a deterministic client order id so a restart reconciles against the exchange instead of double-filling; and `acceptRequest` closes the free-cancel option without ever letting a dead executor strand a request. **51 passing.**
+
+**Still open, deliberately:**
+- `:latest` needs pinning to a digest, but only **after** CI rebuilds the image from the agent changes above. This is an Aug 6 deploy step, not a code change.
+- The Hyperliquid account in `TorchFdcConsumer.sol:61` is a compile-time constant with no rotation path, and is not linked to the vault's mutable `executor`. Rotating the exchange account would silently brick both attestation entry points. Wants an owner-settable value with an event.
+- Owner powers (`setOracle`, `setExecutor`, `setParams`) have no timelock. Deliberate on testnet for iteration speed; must change before real money.
+- The vault still has no partial-close or funding-rate support. Known, on the roadmap, not a defect.
 
 ---
 
