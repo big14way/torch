@@ -2,9 +2,17 @@ import { useMemo, useState } from "react";
 import { usePublicClient, useWriteContract } from "wagmi";
 import { parseUnits } from "viem";
 import { DEPLOY, VAULT } from "../lib/config";
-import { fmtFxrp, fmtPx, useEffectiveAccount, useFreeMargin, useXrpPrice, waitTx } from "../lib/hooks";
+import {
+  estLiqPrice,
+  fmtFxrp,
+  fmtPx,
+  marginMovesWithMark,
+  useEffectiveAccount,
+  useFreeMargin,
+  useXrpPrice,
+  waitTx,
+} from "../lib/hooks";
 
-const MAINTENANCE = 0.05; // mirrors maintenanceMarginBps = 500
 const MIN_NOTIONAL_USD = 10; // Hyperliquid rejects orders under ~$10 notional
 
 export default function Ticket({ marketKey, mark }: { marketKey: string; mark: bigint | undefined }) {
@@ -30,14 +38,11 @@ export default function Ticket({ marketKey, mark }: { marketKey: string; mark: b
     const lev = levX10 / 10;
     const sizeUsd = marginUsd * lev;
     const openFee = sizeUsd * 0.0008;
-    // liq estimate holds XRP/USD constant; the contract re-marks live
-    const liqPx = px
-      ? isLong
-        ? px * (1 + MAINTENANCE - 1 / lev)
-        : px * (1 - MAINTENANCE + 1 / lev)
-      : 0;
+    // XRP margin is re-marked on the same feed that prices XRP-PERP, so that
+    // market needs the coupled formula (see estLiqPrice).
+    const liqPx = estLiqPrice(px, lev, isLong, marginMovesWithMark(marketKey));
     return { marginUsd, sizeUsd, openFee, liqPx, lev };
-  }, [marginStr, levX10, isLong, mark, xrpPx]);
+  }, [marginStr, levX10, isLong, mark, xrpPx, marketKey]);
 
   const marginWei = useMemo(() => {
     try {

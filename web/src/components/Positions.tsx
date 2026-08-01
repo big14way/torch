@@ -1,27 +1,43 @@
+import { useState } from "react";
 import { useReadContracts, usePublicClient, useWriteContract } from "wagmi";
 import { DEPLOY, STATUS, VAULT, type Position } from "../lib/config";
-import { fmtFxrp, fmtPx, fmtUsd6, livePnlUsd6, marketName, useXrpPrice, waitTx } from "../lib/hooks";
-
-const MAINTENANCE = 0.05; // mirrors maintenanceMarginBps = 500
+import {
+  estLiqPrice,
+  fmtFxrp,
+  fmtPx,
+  fmtUsd6,
+  livePnlUsd6,
+  marginMovesWithMark,
+  marketName,
+  MAINTENANCE_FRACTION,
+  useEffectiveAccount,
+  useXrpPrice,
+  waitTx,
+} from "../lib/hooks";
 
 /** Estimated liquidation price + health for an open position.
  * Health is the equity's distance to the maintenance floor: 1 right after
- * open, 0 at liquidation. Holds XRP/USD constant; the contract re-marks live. */
+ * open, 0 at liquidation. Liquidation price uses the coupled formula on
+ * XRP-PERP, where margin is re-marked on the same feed as the mark. */
 function liqAndHealth(p: Position, mark: bigint | undefined, xrpPx: bigint | undefined) {
   if (!mark || !xrpPx || p.entryPrice6 === 0n) return null;
   const entry = Number(p.entryPrice6) / 1e6;
   const size = Number(p.sizeUsd6) / 1e6;
-  const marginUsd = (Number(p.marginFxrp) / 1e6) * (Number(xrpPx) / 1e6);
+  const marginFxrp = Number(p.marginFxrp) / 1e6;
+  const marginUsd = marginFxrp * (Number(xrpPx) / 1e6);
   if (size <= 0 || marginUsd <= 0) return null;
-  const liq = p.isLong
-    ? entry * (1 + MAINTENANCE - marginUsd / size)
-    : entry * (1 - MAINTENANCE + marginUsd / size);
+  // Leverage for the liq estimate must be measured at entry, since sizeUsd6 was
+  // fixed at open. On XRP-PERP the entry price *is* the XRP price at open, so
+  // margin-at-entry is marginFxrp*entry; elsewhere fall back to the live mark.
+  const coupled = marginMovesWithMark(marketName(p.market));
+  const lev = coupled ? size / (marginFxrp * entry) : size / marginUsd;
+  const liq = estLiqPrice(entry, lev, p.isLong, coupled);
   const pnlUsd = Number(livePnlUsd6(p, mark) ?? 0n) / 1e6;
   const equity = marginUsd + pnlUsd;
-  const maint = size * MAINTENANCE;
+  const maint = size * MAINTENANCE_FRACTION;
   const denom = marginUsd - maint;
   const health = denom > 0 ? Math.max(0, Math.min(1, (equity - maint) / denom)) : 0;
-  return { liq: Math.max(liq, 0), health };
+  return { liq, health };
 }
 
 function useAllMarks(): Record<string, bigint | undefined> {
@@ -45,13 +61,21 @@ export default function Positions({ positions }: { positions: Position[] | undef
   const { data: xrpPx } = useXrpPrice();
   const { writeContractAsync, isPending } = useWriteContract();
   const publicClient = usePublicClient();
+  const { isConnected } = useEffectiveAccount();
+  const [actErr, setActErr] = useState<string | null>(null);
 
   const act = async (fn: "requestClose" | "cancelRequest", id: bigint) => {
+    setActErr(null);
     try {
       const hash = await writeContractAsync({ ...VAULT, functionName: fn, args: [id] });
       await waitTx(publicClient, hash);
-    } catch {
-      // surfaced by wallet; table state refreshes on poll
+    } catch (e) {
+      // Previously swallowed entirely, so a revert or a wallet-less click gave
+      // the user no feedback at all.
+      const msg = e instanceof Error ? e.message : String(e);
+      setActErr(
+        msg.includes("User rejected") ? "Rejected in wallet." : msg.split("\n")[0].slice(0, 140)
+      );
     }
   };
 
@@ -131,10 +155,19 @@ export default function Positions({ positions }: { positions: Position[] | undef
                 </td>
                 <td>
                   {done ? (
-                    <span className={p.pnlFxrp >= 0n ? "pnl-pos" : "pnl-neg"}>
-                      {p.pnlFxrp >= 0n ? "+" : ""}
-                      {fmtFxrp(p.pnlFxrp)} FXRP
-                    </span>
+                    (() => {
+                      // The contract stores unclamped mark PnL but floors the
+                      // payout at zero, so a hard liquidation would otherwise
+                      // display a bigger loss than the user could actually take
+                      // (and disagree with the leaderboard, which clamps).
+                      const shown = p.pnlFxrp < -p.marginFxrp ? -p.marginFxrp : p.pnlFxrp;
+                      return (
+                        <span className={shown >= 0n ? "pnl-pos" : "pnl-neg"}>
+                          {shown >= 0n ? "+" : ""}
+                          {fmtFxrp(shown)} FXRP
+                        </span>
+                      );
+                    })()
                   ) : live !== null ? (
                     <span className={live >= 0n ? "pnl-pos" : "pnl-neg"}>
                       {live >= 0n ? "+$" : "-$"}
@@ -149,12 +182,12 @@ export default function Positions({ positions }: { positions: Position[] | undef
                 </td>
                 <td>
                   {open && (
-                    <button className="btn sm ghost" disabled={isPending} onClick={() => act("requestClose", p.id)}>
+                    <button className="btn sm ghost" disabled={isPending || !isConnected} onClick={() => act("requestClose", p.id)}>
                       Close
                     </button>
                   )}
                   {requested && (
-                    <button className="btn sm ghost" disabled={isPending} onClick={() => act("cancelRequest", p.id)}>
+                    <button className="btn sm ghost" disabled={isPending || !isConnected} onClick={() => act("cancelRequest", p.id)}>
                       Cancel
                     </button>
                   )}
@@ -164,6 +197,7 @@ export default function Positions({ positions }: { positions: Position[] | undef
           })}
         </tbody>
       </table>
+      {actErr && <div className="notice error">{actErr}</div>}
     </div>
   );
 }

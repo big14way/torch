@@ -20,6 +20,51 @@ export function useEffectiveAccount() {
   };
 }
 
+export const MAINTENANCE_FRACTION = 0.05; // mirrors maintenanceMarginBps = 500
+
+/** Estimated liquidation price, in the market's own price units.
+ *
+ * For most markets the margin's USD value does not move with the mark, so
+ * equity = margin + size·(P/P0 − 1) and the classic formula holds.
+ *
+ * XRP-PERP is the exception and it matters, because it is the flagship market:
+ * margin is FXRP, and the vault values it through `_fxrpToUsd6`, which reads
+ * the *same* XRP/USD feed that prices the market. Margin and mark therefore
+ * move together. Solving equity <= maintenance with that coupling gives
+ *   long:  P <= P0 · L(1+m)/(1+L)
+ *   short: P >= P0 · L(1−m)/(L−1)
+ * The uncoupled formula puts liquidation further away than it really is
+ * (−28% vs the true −21% on a 3x long), which is the dangerous direction to
+ * be wrong in: a trader sizing a stop off it gets liquidated first.
+ *
+ * Returns 0 when there is no reachable liquidation price (a 1x coupled short
+ * has constant USD equity, so price alone can never liquidate it); callers
+ * render 0 as "no estimate".
+ */
+export function estLiqPrice(
+  entryPx: number,
+  leverage: number,
+  isLong: boolean,
+  marginMovesWithMark: boolean,
+  maintenance = MAINTENANCE_FRACTION
+): number {
+  if (!(entryPx > 0) || !(leverage > 0)) return 0;
+  if (marginMovesWithMark) {
+    if (isLong) return (entryPx * leverage * (1 + maintenance)) / (1 + leverage);
+    if (leverage <= 1) return 0;
+    return (entryPx * leverage * (1 - maintenance)) / (leverage - 1);
+  }
+  const liq = isLong
+    ? entryPx * (1 + maintenance - 1 / leverage)
+    : entryPx * (1 - maintenance + 1 / leverage);
+  return Math.max(liq, 0);
+}
+
+/** True when a market's margin is re-marked on the same feed that prices it,
+ * which is what breaks the classic liquidation formula. Margin is FXRP, so
+ * this is the XRP market and only the XRP market. */
+export const marginMovesWithMark = (marketKey: string) => marketKey === "XRP";
+
 /** Coston2's receipt endpoint lags behind the chain; viem's default retry
  * gives up first and throws "Transaction receipt ... could not be found" for
  * txs that actually mined. Wait patiently, and never let a lagging receipt
@@ -29,16 +74,24 @@ export async function waitTx(client: unknown, hash: `0x${string}`): Promise<void
     | { waitForTransactionReceipt?: (a: unknown) => Promise<unknown> }
     | undefined;
   if (!c?.waitForTransactionReceipt) return;
+  let receipt: { status?: string } | undefined;
   try {
-    await c.waitForTransactionReceipt({
+    receipt = (await c.waitForTransactionReceipt({
       hash,
       timeout: 180_000,
       pollingInterval: 3_000,
       retryCount: 30,
-    });
+    })) as { status?: string } | undefined;
   } catch {
     // Receipt endpoint still lagging: the tx is almost certainly mined. The
     // UI's 3s state polls will reflect it; don't surface a scary error.
+    return;
+  }
+  // A tx that mined and REVERTED resolves normally here — only `status` says
+  // so. Without this check a reverted deposit reported success and the UI told
+  // the user their margin had moved when it had not.
+  if (receipt?.status === "reverted") {
+    throw new Error("Transaction reverted on-chain. Nothing was changed.");
   }
 }
 
