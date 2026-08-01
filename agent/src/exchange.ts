@@ -224,10 +224,20 @@ export class HyperliquidTestnet implements Exchange {
     return found;
   }
 
-  /** Aggressive price with 1% slippage room, formatted as HL expects. */
+  /** Aggressive price with 1% slippage room, formatted as HL expects.
+   *
+   * Hyperliquid wants at most 5 significant figures and at most 6 decimals.
+   * toPrecision(5) satisfies the first but emits EXPONENTIAL notation once a
+   * price reaches six figures -- (124690.56).toPrecision(5) is "1.2469e+5",
+   * which the API rejects. That made every BTC order fail, and mock mode could
+   * never surface it. Round to 5 significant figures numerically, then print
+   * in plain decimal. */
   private slippagePx(mid6: bigint, buying: boolean): string {
     const mid = Number(mid6) / 1e6;
     const px = buying ? mid * 1.01 : mid * 0.99;
-    return px.toPrecision(5);
+    if (!Number.isFinite(px) || px <= 0) return "0";
+    const magnitude = Math.floor(Math.log10(px)) + 1;
+    const decimals = Math.min(6, Math.max(0, 5 - magnitude));
+    return px.toFixed(decimals);
   }
 }
