@@ -81,7 +81,20 @@ async function main() {
   // Loop-health telemetry, surfaced in the status JSON so "idle" and "wedged"
   // are distinguishable from outside (the Jul 22 audit found a 16h silence
   // that was unprovable either way).
-  const health = { lastLoopAt: 0, loops: 0, gasWei: 0n, gasLow: false };
+  const health = {
+    lastLoopAt: 0,
+    loops: 0,
+    gasWei: 0n,
+    gasLow: false,
+    liqFailures: 0,        // liquidation attempts that failed for a REAL reason
+    lastLiqFailure: "",
+    givenUp: [] as string[], // positions parked after repeated fill failures
+  };
+  // Per-position fill-failure counts. Without this a band revert (routine on an
+  // illiquid testnet book) re-places a real exchange order every 3s forever,
+  // burning taker fees on both legs with no backoff and no give-up state.
+  const fillFailures = new Map<string, number>();
+  const MAX_FILL_ATTEMPTS = 5;
   // HL egress spike results (HL_SMOKE=1 runs a one-shot exchange round trip
   // instead of the vault loop; see the gate below runLoop's definition).
   let smokeResult: Record<string, unknown> | undefined;
@@ -91,6 +104,12 @@ async function main() {
     createHttpServer((_req, res) => {
         res.setHeader("content-type", "application/json");
         res.setHeader("access-control-allow-origin", "*");
+        // A wedged loop used to answer 200 with a cheerful body, so a naive
+        // uptime check saw green while no order was being filled. Say 503 when
+        // the loop has stopped ticking; the body still explains why.
+        const ageSec = health.lastLoopAt ? Math.round((Date.now() - health.lastLoopAt) / 1000) : null;
+        const stalled = ageSec !== null && ageSec > 60;
+        res.statusCode = stalled ? 503 : 200;
         res.end(
           JSON.stringify(
             {
@@ -102,10 +121,16 @@ async function main() {
               tee: { mode: att.mode, imageDigest: att.imageDigest ?? null },
               loop: {
                 lastTick: health.lastLoopAt ? new Date(health.lastLoopAt).toISOString() : null,
-                ageSec: health.lastLoopAt ? Math.round((Date.now() - health.lastLoopAt) / 1000) : null,
+                ageSec,
                 cycles: health.loops,
+                stalled,
               },
               gas: { balanceWei: health.gasWei.toString(), low: health.gasLow },
+              failures: {
+                liquidations: health.liqFailures,
+                lastLiquidationError: health.lastLiqFailure || null,
+                givenUpPositions: health.givenUp,
+              },
               ...(smokeResult ? { smoke: smokeResult } : {}),
             },
             null,
@@ -251,7 +276,15 @@ async function main() {
       health.gasWei = bal;
       const floor = 3_000_000n * gasPrice * 10n;
       health.gasLow = bal < floor;
-      const line = `heartbeat: loops=${health.loops} gas=${(Number(bal) / 1e18).toFixed(2)} C2FLR${health.gasLow ? " LOW — top up now" : ""}`;
+      const ageSec = health.lastLoopAt ? Math.round((Date.now() - health.lastLoopAt) / 1000) : -1;
+      const stalled = health.lastLoopAt !== 0 && ageSec > 60;
+      const line =
+        `heartbeat: loops=${health.loops} gas=${(Number(bal) / 1e18).toFixed(2)} C2FLR` +
+        `${health.gasLow ? " LOW — top up now" : ""}` +
+        // the loop reschedules itself in a finally; if lastLoopAt stops moving
+        // the loop is wedged and a bare "still alive" line would be a lie
+        `${stalled ? ` LOOP STALLED ${ageSec}s — not filling orders` : ""}` +
+        `${health.liqFailures > 0 ? ` liqFailures=${health.liqFailures}` : ""}`;
       console.log(new Date().toISOString(), line);
     } catch (e) {
       console.error("heartbeat error:", (e as Error).message);
@@ -281,6 +314,7 @@ async function main() {
         if (p.status === S.Requested) {
           const idStr = p.id.toString();
           if (inFlight.has(idStr)) continue; // fill already in flight; don't double-order
+          if ((fillFailures.get(idStr) ?? 0) >= MAX_FILL_ATTEMPTS) continue; // parked, see below
           inFlight.add(idStr);
           try {
             const fill = await exchange.open(key, p.isLong, p.sizeUsd6);
@@ -293,6 +327,7 @@ async function main() {
                 chain: null,
               });
               await waitMined(hash, p.id, [S.Open]); // hold the lock until it mines
+              fillFailures.delete(idStr);
               log(p.id, `OPEN  ${key} ${p.isLong ? "long" : "short"} @ ${fmt6(fill.price6)} (${fill.venue ?? exchange.name}) tx ${hash.slice(0, 10)}`);
             } catch (confirmErr) {
               // The exchange filled but the on-chain confirm failed (band
@@ -315,7 +350,15 @@ async function main() {
               }
             }
           } catch (e) {
-            log(p.id, `open failed: ${(e as Error).message}`);
+            const n = (fillFailures.get(idStr) ?? 0) + 1;
+            fillFailures.set(idStr, n);
+            log(p.id, `open failed (${n}/${MAX_FILL_ATTEMPTS}): ${(e as Error).message}`);
+            if (n >= MAX_FILL_ATTEMPTS) {
+              // Stop paying exchange fees to retry something that keeps
+              // failing. The user can still cancel the request themselves.
+              if (!health.givenUp.includes(idStr)) health.givenUp.push(idStr);
+              log(p.id, `GIVING UP after ${n} attempts; parked and reported in status`);
+            }
           } finally {
             inFlight.delete(idStr);
           }
@@ -371,7 +414,15 @@ async function main() {
               }
             }
           } catch (e) {
-            // NotLiquidatable races are expected; stay quiet unless verbose
+            // NotLiquidatable races ARE expected and stay quiet. Everything
+            // else (out of gas, RPC down, stuck nonce) means the fund is
+            // eating a loss it should not, so it must be visible.
+            const msg = (e as Error).message ?? String(e);
+            if (!/NotLiquidatable/.test(msg)) {
+              health.liqFailures += 1;
+              health.lastLiqFailure = msg.slice(0, 160);
+              log(p.id, `LIQUIDATION FAILED: ${msg.slice(0, 160)}`);
+            }
           }
         } else if (p.status === S.Closed || p.status === S.Liquidated || p.status === S.Cancelled) {
           finalized.add(i.toString()); // never re-read a terminal position

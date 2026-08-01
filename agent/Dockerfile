@@ -5,9 +5,12 @@ FROM node:22-slim
 
 WORKDIR /app
 
-# Install deps (incl. tsx and the optional Hyperliquid SDK) before prod flip.
-COPY package.json ./
-RUN npm install --include=optional && npm cache clean --force
+# Install from the lockfile, not from ^ ranges. Without this two builds of the
+# same source resolve different transitive trees and produce different image
+# digests, so nobody (including us) can reproduce the digest the enclave
+# attests to -- which makes the attestation unfalsifiable in both directions.
+COPY package.json package-lock.json ./
+RUN npm ci --include=optional && npm cache clean --force
 
 # Source + generated config (deployments.json + ABIs, baked from a Coston2 deploy).
 COPY tsconfig.json ./
