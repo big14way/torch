@@ -255,7 +255,9 @@ contract TorchVaultV2 is Ownable, ReentrancyGuard, Pausable {
         emit RequestCancelled(id);
     }
 
-    function requestClose(uint256 id) external whenNotPaused {
+    /// @dev Deliberately NOT whenNotPaused: pause must never trap a user in an
+    /// open position while the executor can still liquidate them.
+    function requestClose(uint256 id) external {
         Position storage p = _positions[id];
         if (p.owner != msg.sender) revert NotPositionOwner();
         if (p.status != Status.Open) revert BadStatus();
@@ -266,7 +268,8 @@ contract TorchVaultV2 is Ownable, ReentrancyGuard, Pausable {
     /// @notice Set (or clear, with 0) a stop-loss / take-profit on your own
     /// position. The executor can only settle on these when the contract
     /// itself re-reads FTSO and agrees the trigger was crossed.
-    function setTriggers(uint256 id, uint256 stopPrice6, uint256 takeProfitPrice6) external whenNotPaused {
+    /// @dev Not whenNotPaused: setting an exit is risk-reducing.
+    function setTriggers(uint256 id, uint256 stopPrice6, uint256 takeProfitPrice6) external {
         Position storage p = _positions[id];
         if (p.owner != msg.sender) revert NotPositionOwner();
         if (p.status != Status.Requested && p.status != Status.Open) revert BadStatus();
@@ -292,6 +295,10 @@ contract TorchVaultV2 is Ownable, ReentrancyGuard, Pausable {
         bool tpHit = t.takeProfitPrice6 != 0 && (p.isLong ? ftso >= t.takeProfitPrice6 : ftso <= t.takeProfitPrice6);
         if (!stopHit && !tpHit) revert TriggerNotHit();
         _checkBand(markets[p.market].feedId, exitPrice6);
+        // Deliberately NOT clamped to the trigger price: when price gaps past
+        // a stop the honest exit is beyond it, and clamping would make the
+        // position unclosable exactly when the stop matters most.
+        _requireNoWorseThanOracle(markets[p.market].feedId, exitPrice6, p.isLong);
         emit TriggerExecuted(id, stopHit, exitPrice6);
         _settle(p, exitPrice6, false);
     }
@@ -300,10 +307,17 @@ contract TorchVaultV2 is Ownable, ReentrancyGuard, Pausable {
 
     /// @notice Executor confirms the Hyperliquid fill. Reported entry price
     /// must sit inside the FTSO deviation band for the market's feed.
-    function confirmFill(uint256 id, uint256 entryPrice6, uint64 hlOid) external onlyExecutor nonReentrant {
+    function confirmFill(uint256 id, uint256 entryPrice6, uint64 hlOid)
+        external
+        onlyExecutor
+        nonReentrant
+        whenNotPaused
+    {
         Position storage p = _positions[id];
         if (p.status != Status.Requested) revert BadStatus();
         _checkBand(markets[p.market].feedId, entryPrice6);
+        // entry: a long wants to buy lower, a short wants to sell higher
+        _requireNoWorseThanOracle(markets[p.market].feedId, entryPrice6, !p.isLong);
 
         // v2: the global cap binds when notional becomes real, at fill time
         if (maxOpenNotionalUsd6 != 0 && openNotionalUsd6 + p.sizeUsd6 > maxOpenNotionalUsd6) {
@@ -330,6 +344,7 @@ contract TorchVaultV2 is Ownable, ReentrancyGuard, Pausable {
         Position storage p = _positions[id];
         if (p.status != Status.CloseRequested) revert BadStatus();
         _checkBand(markets[p.market].feedId, exitPrice6);
+        _requireNoWorseThanOracle(markets[p.market].feedId, exitPrice6, p.isLong);
         _settle(p, exitPrice6, false);
     }
 
@@ -340,8 +355,12 @@ contract TorchVaultV2 is Ownable, ReentrancyGuard, Pausable {
         Position storage p = _positions[id];
         if (p.status != Status.Open && p.status != Status.CloseRequested) revert BadStatus();
         _checkBand(markets[p.market].feedId, markPrice6);
+        _requireNoWorseThanOracle(markets[p.market].feedId, markPrice6, p.isLong);
 
-        int256 pnlUsd6 = _pnlUsd6(p, markPrice6);
+        // Eligibility is decided at the ORACLE, never at the number the
+        // executor just supplied -- otherwise shading inside the band could
+        // manufacture a liquidation of a position that is genuinely solvent.
+        int256 pnlUsd6 = _pnlUsd6(p, _price6(markets[p.market].feedId));
         int256 equityUsd6 = int256(_fxrpToUsd6(p.marginFxrp)) + pnlUsd6;
         int256 maintenanceUsd6 = int256((p.sizeUsd6 * maintenanceMarginBps) / 10_000);
         if (equityUsd6 > maintenanceUsd6) revert NotLiquidatable();
@@ -404,6 +423,13 @@ contract TorchVaultV2 is Ownable, ReentrancyGuard, Pausable {
         uint16 _liquidationFeeBps,
         uint64 _maxPriceAge
     ) external onlyOwner {
+        // Unbounded setters would let the owner widen the band to anything and
+        // then sweep the resulting margin through withdrawInsurance. Bound them.
+        if (_maxDeviationBps == 0 || _maxDeviationBps > 300) revert BadLeverage();
+        if (_maintenanceMarginBps > 2_000) revert BadLeverage();
+        if (_liquidationFeeBps > 500) revert BadLeverage();
+        if (_openFeeBps > 100 || _closeFeeBps > 100) revert BadLeverage();
+        if (_maxPriceAge < 60 || _maxPriceAge > 1 hours) revert StalePrice();
         maxDeviationBps = _maxDeviationBps;
         openFeeBps = _openFeeBps;
         closeFeeBps = _closeFeeBps;
@@ -540,6 +566,23 @@ contract TorchVaultV2 is Ownable, ReentrancyGuard, Pausable {
         return (size * (entry - mark)) / entry;
     }
 
+    /// @dev The band alone still lets the executor pick the bad end of it, which
+    /// at 10x is 15% of margin per leg. Torch's stated policy is that venue
+    /// drift is "basis risk carried by the operator, never by the user", so a
+    /// reported price may be better for the user than the oracle but never
+    /// worse. `betterIsHigher` is true when a higher price favours the user:
+    /// closing a long, or opening a short.
+    function _requireNoWorseThanOracle(
+        bytes21 feedId,
+        uint256 reported6,
+        bool betterIsHigher
+    ) internal view {
+        uint256 ref = _price6(feedId);
+        if (betterIsHigher ? reported6 < ref : reported6 > ref) {
+            revert PriceOutOfBand(reported6, ref);
+        }
+    }
+
     function _checkBand(bytes21 feedId, uint256 reported6) internal view {
         uint256 ref = _price6(feedId);
         uint256 diff = reported6 > ref ? reported6 - ref : ref - reported6;
@@ -550,6 +593,10 @@ contract TorchVaultV2 is Ownable, ReentrancyGuard, Pausable {
     function _price6(bytes21 feedId) internal view returns (uint256) {
         (uint256 value, int8 dec, uint64 ts) = oracle.getPrice(feedId);
         if (maxPriceAge != 0 && block.timestamp > ts + maxPriceAge) revert StalePrice();
+        // A zero price would sail through _checkBand (diff 0) and then store
+        // entryPrice6 = 0, after which every _pnlUsd6 divides by zero and the
+        // position can never be closed. Fail closed instead.
+        if (value == 0) revert StalePrice();
         if (dec == 6) return value;
         if (dec > 6) return value / (10 ** uint256(uint8(dec - 6)));
         // dec < 6 covers negative decimals too: scale up by (6 - dec)

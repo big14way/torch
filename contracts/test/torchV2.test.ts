@@ -112,9 +112,11 @@ describe("TorchVaultV2", () => {
 
     await vault.connect(alice).setTriggers(id, 0, P(90_000)); // short: tp below
     await oracle.setPrice(BTC_FEED, P(89_000));
-    await expect(vault.connect(executor).executeTrigger(id, P(89_100)))
+    // settle at the oracle: 89_100 would be 0.1% worse for a short and is now
+    // refused, which is the point of the no-worse-than-oracle rule.
+    await expect(vault.connect(executor).executeTrigger(id, P(89_000)))
       .to.emit(vault, "TriggerExecuted")
-      .withArgs(id, false, P(89_100));
+      .withArgs(id, false, P(89_000));
     const p = await vault.getPosition(id);
     expect(p.pnlFxrp).to.be.greaterThan(0n);
   });
@@ -221,5 +223,135 @@ describe("TorchVaultV2", () => {
     expect(vaultBefore - vaultAfter).to.equal(FX(0.16)); // fee to treasury
     // fund paid the full profit: $50 = 20 FXRP
     expect(fundBefore - (await vault.insuranceFund())).to.equal(FX(20));
+  });
+
+  // ---------------------------------------------------------------------
+  // Aug 1 audit regressions. Each of these fails against the pre-fix
+  // contract, so they pin the behaviour rather than just describing it.
+  // ---------------------------------------------------------------------
+
+  it("refuses a settlement price shaded against the user, inside the band", async () => {
+    const f = await loadFixture(fixture);
+    const { vault, executor, alice } = f;
+    const id = await openLong(f);
+    await vault.connect(alice).requestClose(id);
+
+    // 1% below the $100k oracle: inside the 1.5% band, but worse for a long.
+    await expect(
+      vault.connect(executor).confirmClose(id, P(99_000))
+    ).to.be.revertedWithCustomError(vault, "PriceOutOfBand");
+
+    // at the oracle, and better than it, both settle fine
+    await expect(vault.connect(executor).confirmClose(id, P(100_500))).to.not.be.reverted;
+  });
+
+  it("refuses an entry price shaded against the user", async () => {
+    const f = await loadFixture(fixture);
+    const { vault, executor, alice } = f;
+    await vault.connect(alice).deposit(FX(1_000));
+    await vault.connect(alice).openPosition(BTC, true, FX(100), 20);
+    const id = (await vault.positionsCount()) - 1n;
+    // a long buying 1% ABOVE the oracle is worse for the user
+    await expect(
+      vault.connect(executor).confirmFill(id, P(101_000), 1n)
+    ).to.be.revertedWithCustomError(vault, "PriceOutOfBand");
+    await expect(vault.connect(executor).confirmFill(id, P(99_500), 1n)).to.not.be.reverted;
+  });
+
+  it("decides liquidation at the oracle, not at the executor's price", async () => {
+    const f = await loadFixture(fixture);
+    const { vault, executor, oracle } = f;
+    const id = await openLong(f, FX(100)); // 2x long, $500 notional, entry 100k
+
+    // Oracle says equity is still above maintenance. Executor tries to shade
+    // 1.4% down (inside the band) to manufacture a liquidation.
+    await oracle.setPrice(BTC_FEED, P(88_000));
+    // shading down is refused outright now
+    await expect(
+      vault.connect(executor).liquidate(id, P(86_800))
+    ).to.be.revertedWithCustomError(vault, "PriceOutOfBand");
+    // and at the honest oracle price the position is simply not liquidatable
+    await expect(
+      vault.connect(executor).liquidate(id, P(88_000))
+    ).to.be.revertedWithCustomError(vault, "NotLiquidatable");
+
+    // Once the ORACLE itself crosses, the same call succeeds. (2x long on a
+    // $500 notional with ~$249 of margin needs roughly a 50% drawdown.)
+    await oracle.setPrice(BTC_FEED, P(50_000));
+    await expect(vault.connect(executor).liquidate(id, P(50_000))).to.not.be.reverted;
+    expect((await vault.getPosition(id)).status).to.equal(5); // Liquidated
+  });
+
+  it("still settles a stop-loss when price gaps well past the trigger", async () => {
+    const f = await loadFixture(fixture);
+    const { vault, executor, alice, oracle } = f;
+    const id = await openLong(f);
+    await vault.connect(alice).setTriggers(id, P(95_000), 0); // stop at 95k
+
+    // gap straight through the stop to 90k. The honest exit is BELOW the
+    // trigger; clamping to the trigger would have made this unclosable.
+    await oracle.setPrice(BTC_FEED, P(90_000));
+    await expect(vault.connect(executor).executeTrigger(id, P(90_000))).to.not.be.reverted;
+    expect((await vault.getPosition(id)).status).to.equal(4); // Closed
+  });
+
+  it("lets a user exit while paused, but blocks new exposure", async () => {
+    const f = await loadFixture(fixture);
+    const { vault, executor, alice } = f;
+    const id = await openLong(f);
+
+    // queue a second position, then pause before it fills
+    await vault.connect(alice).openPosition(BTC, true, FX(50), 20);
+    const pending = (await vault.positionsCount()) - 1n;
+    await vault.pause();
+
+    // new risk is frozen
+    await expect(vault.connect(alice).deposit(FX(10))).to.be.revertedWithCustomError(
+      vault,
+      "EnforcedPause"
+    );
+    await expect(
+      vault.connect(executor).confirmFill(pending, P(100_000), 9n)
+    ).to.be.revertedWithCustomError(vault, "EnforcedPause");
+
+    // but the user is never trapped in an open position
+    await expect(vault.connect(alice).setTriggers(id, P(90_000), 0)).to.not.be.reverted;
+    await expect(vault.connect(alice).requestClose(id)).to.not.be.reverted;
+    await expect(vault.connect(executor).confirmClose(id, P(100_000))).to.not.be.reverted;
+  });
+
+  it("treats a zero oracle price as stale instead of bricking the position", async () => {
+    const f = await loadFixture(fixture);
+    const { vault, executor, alice, oracle } = f;
+    await vault.connect(alice).deposit(FX(1_000));
+    await vault.connect(alice).openPosition(BTC, true, FX(100), 20);
+    const id = (await vault.positionsCount()) - 1n;
+
+    // A zero feed used to pass _checkBand (diff == 0) and store entryPrice6 = 0,
+    // after which every close divided by zero forever.
+    const zeroOracle = await (await ethers.getContractFactory("MockZeroFtsoV2")).deploy();
+    await vault.setOracle(await zeroOracle.getAddress());
+    await expect(
+      vault.connect(executor).confirmFill(id, 0n, 1n)
+    ).to.be.revertedWithCustomError(vault, "StalePrice");
+  });
+
+  it("bounds the owner's parameter setters", async () => {
+    const { vault } = await loadFixture(fixture);
+    // a 100% band would make the oracle guarantee meaningless
+    await expect(vault.setParams(10_000, 8, 8, 500, 100, 600)).to.be.revertedWithCustomError(
+      vault,
+      "BadLeverage"
+    );
+    await expect(vault.setParams(0, 8, 8, 500, 100, 600)).to.be.revertedWithCustomError(
+      vault,
+      "BadLeverage"
+    );
+    // disabling staleness entirely is no longer allowed
+    await expect(vault.setParams(150, 8, 8, 500, 100, 0)).to.be.revertedWithCustomError(
+      vault,
+      "StalePrice"
+    );
+    await expect(vault.setParams(150, 8, 8, 500, 100, 600)).to.not.be.reverted;
   });
 });
