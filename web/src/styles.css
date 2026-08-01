@@ -600,3 +600,21 @@ html, body { overflow-x: hidden; max-width: 100%; }
    without this the card stretches (grid row span) but the chart doesn't,
    leaving dead space under the candles. */
 .area-chart > div:last-child { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+
+/* execution-mode disclosure on the verify page: dull by default, because the
+   honest state today is "not routing to an exchange" and that should read as
+   plain fact rather than a warning or a win */
+.modeline {
+  display: flex; align-items: flex-start; gap: 9px;
+  /* the dot is the only flex item; all copy lives in one span so the
+     sentence wraps normally instead of breaking into columns */
+  font-size: 13px; line-height: 1.55; color: var(--smoke);
+  background: rgba(24, 18, 14, 0.6); border: var(--border);
+  border-radius: 10px; padding: 11px 13px; margin-bottom: 14px;
+}
+.modeline b { color: var(--bone); }
+.modedot {
+  width: 7px; height: 7px; border-radius: 50%; background: var(--smoke-2);
+  margin-top: 7px; flex: none;
+}
+.modeline.on .modedot { background: var(--long); }

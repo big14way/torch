@@ -1,13 +1,19 @@
 import { DEPLOY, FDC, type Position } from "../lib/config";
+import { useExecutorStatus } from "../lib/hooks";
 
 /**
  * The route trace is Torch's signature element. It renders the actual
- * architecture (Flare vault, TEE enclave, Hyperliquid book) and lights each
- * hop as the latest order moves through it, so the interop story is visible
- * in the product, not just the pitch deck.
+ * architecture and lights each hop as the latest order moves through it.
+ *
+ * The third hop is labelled from the enclave's OWN reported execution mode, not
+ * from what we wish were true: while it runs in mock mode the agent fills at
+ * the FTSO mark and no order reaches an exchange, so naming Hyperliquid as a
+ * live hop would be a false claim. If the endpoint is unreachable we say so
+ * rather than assuming the flattering case.
  */
 export default function RouteTrace({ positions }: { positions: Position[] | undefined }) {
   const latest = positions && positions.length > 0 ? positions[positions.length - 1] : undefined;
+  const { status, routesToExchange } = useExecutorStatus();
 
   const inFlight = latest?.status === 1 || latest?.status === 3; // Requested or Closing
   const filled = latest !== undefined && latest.entryPrice6 > 0n;
@@ -18,7 +24,9 @@ export default function RouteTrace({ positions }: { positions: Position[] | unde
   const caption = !latest
     ? "Open a position and watch it travel."
     : latest.status === 1
-      ? "Margin locked on Flare. The TEE agent is placing the fill."
+      ? routesToExchange
+        ? "Margin locked on Flare. The TEE agent is placing the fill on the exchange."
+        : "Margin locked on Flare. The TEE agent is filling at the FTSO mark."
       : latest.status === 3
         ? "Close requested. The TEE agent is unwinding the position."
         : latest.status === 2
@@ -46,8 +54,14 @@ export default function RouteTrace({ positions }: { positions: Position[] | unde
         </div>
         <div className={`node ${hlLit ? "lit" : ""}`}>
           <div className="orb" />
-          <div className="name">Hyperliquid</div>
-          <div className="desc">hedge leg (testnet-proven)</div>
+          <div className="name">{routesToExchange ? "Hyperliquid" : "Settlement mark"}</div>
+          <div className="desc">
+            {routesToExchange
+              ? "hedge leg on the exchange book"
+              : status?.executionMode === "mock"
+                ? "filled at the FTSO mark, no exchange leg yet"
+                : "exchange routing unconfirmed"}
+          </div>
         </div>
       </div>
       <div className="caption">{caption}</div>

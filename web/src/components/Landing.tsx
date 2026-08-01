@@ -71,10 +71,11 @@ export default function Landing() {
           </div>
         </div>
         <div className="ld-feat">
-          <div className="ld-feat-t">Fills proven by Flare's validators</div>
+          <div className="ld-feat-t">Fills re-checked by Flare's validators</div>
           <div className="ld-feat-d">
-            Flare's Data Connector re-fetches exchange fills and verifies them on-chain, bound to
-            the exact position.{" "}
+            Flare's Data Connector re-fetches an exchange fill and proves on-chain that the order
+            id our vault recorded really exists, with the right market and side. A receipt anyone
+            can reproduce, not a number you take from us.{" "}
             {FDC.positionAttest ? (
               <a
                 href={`https://coston2-explorer.flare.network/tx/${FDC.positionAttest.tx}`}
@@ -92,7 +93,8 @@ export default function Landing() {
                 See a real proof
               </a>
             )}
-            . Our word is not part of the trust model.
+            . What it does not yet prove (price, size, timing) is spelled out on the{" "}
+            <Link to="/verify">Verify page</Link>, next to what it does.
           </div>
         </div>
       </div>
@@ -104,7 +106,7 @@ export default function Landing() {
           <ul>
             <li>You hold XRP and want to trade with it, not just park it for emissions.</li>
             <li>You read the contract before you read the marketing.</li>
-            <li>You want a venue where "trust me" is never the answer.</li>
+            <li>You want a venue that publishes what it cannot prove, not just what it can.</li>
           </ul>
         </div>
         <div className="ld-proof">

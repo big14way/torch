@@ -1,8 +1,8 @@
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAccount, useReadContract, useReadContracts } from "wagmi";
 import { keepPreviousData } from "@tanstack/react-query";
 import { hexToString } from "viem";
-import { VAULT, DEPLOY, type Position } from "./config";
+import { VAULT, DEPLOY, ENCLAVE_STATUS_URL, type Position } from "./config";
 import { useWatch } from "./watch";
 
 /** The address the UI is looking at: the connected wallet when there is one,
@@ -18,6 +18,44 @@ export function useEffectiveAccount() {
     watching,
     watchLabel: watching ? (watch?.rAddress ?? watch?.address ?? null) : null,
   };
+}
+
+
+export type ExecutorStatus = {
+  executionMode?: string;
+  executor?: string;
+  tee?: { mode?: string; imageDigest?: string | null };
+  loop?: { ageSec?: number; cycles?: number };
+};
+
+/** Reads the enclave's own status so the UI describes what is actually
+ * happening rather than what we hope is happening. While EXECUTION_MODE is
+ * "mock" the agent fills at the FTSO mark and no order reaches an exchange,
+ * so any copy naming Hyperliquid as a live hop would be false. Returns
+ * undefined while loading or if the endpoint is unreachable — callers must
+ * treat "unknown" as "don't claim exchange routing". */
+export function useExecutorStatus(): { status: ExecutorStatus | undefined; routesToExchange: boolean } {
+  const [status, setStatus] = useState<ExecutorStatus | undefined>(undefined);
+  useEffect(() => {
+    let dead = false;
+    const load = () =>
+      fetch(ENCLAVE_STATUS_URL)
+        .then((r) => (r.ok ? r.json() : undefined))
+        .then((j) => {
+          if (!dead) setStatus(j as ExecutorStatus | undefined);
+        })
+        .catch(() => {
+          if (!dead) setStatus(undefined);
+        });
+    load();
+    const t = setInterval(load, 60_000);
+    return () => {
+      dead = true;
+      clearInterval(t);
+    };
+  }, []);
+  const mode = status?.executionMode;
+  return { status, routesToExchange: mode !== undefined && mode !== "mock" };
 }
 
 export const MAINTENANCE_FRACTION = 0.05; // mirrors maintenanceMarginBps = 500

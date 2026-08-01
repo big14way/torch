@@ -13,6 +13,7 @@ import { HowItWorksContent } from "./components/HowItWorks";
 import Stats from "./components/Stats";
 import Leaderboard from "./components/Leaderboard";
 import HouseBook from "./components/HouseBook";
+import Honesty from "./components/Honesty";
 import Landing from "./components/Landing";
 import FeedbackNudge from "./components/FeedbackNudge";
 import MarketStrip from "./components/MarketStrip";
@@ -79,12 +80,14 @@ export default function App() {
           <div className="pagehero">
             <div className="ph-eyebrow">Verify, don't trust</div>
             <h2 className="ph-title">
-              Nothing here asks <span className="ph-grad">for your trust.</span>
+              Check it <span className="ph-grad">yourself.</span>
             </h2>
             <p className="ph-sub">
-              Every price is bounded by Flare's oracle on-chain. The signing key lives in attested
-              hardware. Fills are re-proven by Flare's validators. This page is where you check all
-              of it yourself.
+              Every settlement price is bounded on-chain against Flare's oracle, and must not be
+              worse for you than the oracle itself. The signing key was generated inside attested
+              hardware and can settle trades but never withdraw. Flare's validators can re-prove an
+              exchange fill on-chain after the fact. Here is where you check each of those, and
+              where we say plainly what is not yet proven.
             </p>
           </div>
           <div className="card verify-card">
@@ -92,6 +95,7 @@ export default function App() {
             <HowItWorksContent />
           </div>
           <RouteTrace positions={positions} />
+          <Honesty />
           <HouseBook />
           <Stats />
           <div className="card verify-card">
@@ -108,7 +112,8 @@ export default function App() {
                 </a>
               </li>
               <li>
-                Enclave-executed Hyperliquid fill, FDC-verified on-chain:{" "}
+                Enclave-executed Hyperliquid fill, FDC-verified on-chain (proven Jul 22 on a
+                dedicated run, not the league loop):{" "}
                 <a
                   href={`https://coston2-explorer.flare.network/tx/${FDC.attestTx}`}
                   target="_blank"

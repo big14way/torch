@@ -8,6 +8,7 @@ import {
   fmtPx,
   marginMovesWithMark,
   useEffectiveAccount,
+  useExecutorStatus,
   useFreeMargin,
   useXrpPrice,
   waitTx,
@@ -17,6 +18,7 @@ const MIN_NOTIONAL_USD = 10; // Hyperliquid rejects orders under ~$10 notional
 
 export default function Ticket({ marketKey, mark }: { marketKey: string; mark: bigint | undefined }) {
   const { address, isConnected, watching } = useEffectiveAccount();
+  const { routesToExchange } = useExecutorStatus();
   const { data: free } = useFreeMargin(address);
   const { data: xrpPx } = useXrpPrice();
   const { writeContractAsync, isPending } = useWriteContract();
@@ -170,7 +172,7 @@ export default function Ticket({ marketKey, mark }: { marketKey: string; mark: b
         </div>
         <div className="row">
           <span>Route</span>
-          <b>Flare vault, TEE, Hyperliquid</b>
+          <b>{routesToExchange ? "Flare vault, TEE, Hyperliquid" : "Flare vault, TEE, FTSO mark"}</b>
         </div>
       </div>
 
@@ -197,7 +199,13 @@ export default function Ticket({ marketKey, mark }: { marketKey: string; mark: b
         </button>
       </div>
 
-      {sent && <div className="notice">Request sent. The TEE agent is filling it on the exchange. Watch the route trace.</div>}
+      {sent && (
+        <div className="notice">
+          {routesToExchange
+            ? "Request sent. The TEE agent is filling it on the exchange. Watch the route trace."
+            : "Request sent. The TEE agent is filling it at the FTSO mark. Watch the route trace."}
+        </div>
+      )}
       {error && <div className="notice error">{error}</div>}
     </div>
   );

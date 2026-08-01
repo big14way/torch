@@ -138,3 +138,9 @@ export type Position = {
   openedAt: bigint;
   closedAt: bigint;
 };
+
+/** The enclave's public status endpoint. It publishes the executor address,
+ * attestation mode, loop health and — importantly for honest UI copy — the
+ * execution mode it is actually running in. */
+export const ENCLAVE_STATUS_URL =
+  "https://cc1525a5ca15c4c8ef2668e72bc888f5a0c3239a.dstack-pha-prod9.phala.network";
