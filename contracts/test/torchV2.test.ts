@@ -354,4 +354,61 @@ describe("TorchVaultV2", () => {
     );
     await expect(vault.setParams(150, 8, 8, 500, 100, 600)).to.not.be.reverted;
   });
+
+  it("lets a user retract their own close request", async () => {
+    const f = await loadFixture(fixture);
+    const { vault, alice } = f;
+    const id = await openLong(f);
+    await vault.connect(alice).requestClose(id);
+    expect((await vault.getPosition(id)).status).to.equal(3); // CloseRequested
+    await vault.connect(alice).cancelCloseRequest(id);
+    expect((await vault.getPosition(id)).status).to.equal(2); // back to Open
+    expect(await vault.closeRequestedAt(id)).to.equal(0);
+  });
+
+  it("lets a user settle at the oracle when the executor never answers", async () => {
+    const f = await loadFixture(fixture);
+    const { vault, alice, oracle } = f;
+    const id = await openLong(f);
+    await vault.connect(alice).requestClose(id);
+
+    // executor is dead. Too early to self-close.
+    await expect(vault.connect(alice).selfClose(id)).to.be.revertedWithCustomError(vault, "TooSoon");
+
+    await ethers.provider.send("evm_increaseTime", [2 * 60 * 60 + 1]);
+    // both feeds must be fresh: _settle reads the market feed for PnL and the
+    // XRP feed to value margin, and maxPriceAge is 10 minutes
+    await oracle.setPrice(BTC_FEED, P(101_000));
+    await oracle.setPrice(XRP_FEED, P(2.5));
+    const freeBefore = await vault.freeMargin(alice.address);
+    await expect(vault.connect(alice).selfClose(id)).to.emit(vault, "SelfClosed");
+
+    const p = await vault.getPosition(id);
+    expect(p.status).to.equal(4); // Closed
+    expect(p.exitPrice6).to.equal(P(101_000)); // settled AT the oracle
+    expect(await vault.freeMargin(alice.address)).to.be.greaterThan(freeBefore);
+  });
+
+  it("will not let anyone else self-close your position", async () => {
+    const f = await loadFixture(fixture);
+    const { vault, alice, owner } = f;
+    const id = await openLong(f);
+    await vault.connect(alice).requestClose(id);
+    await ethers.provider.send("evm_increaseTime", [2 * 60 * 60 + 1]);
+    await ethers.provider.send("evm_mine", []);
+    await expect(vault.connect(owner).selfClose(id)).to.be.revertedWithCustomError(
+      vault,
+      "NotPositionOwner"
+    );
+  });
+
+  it("bounds the self-close delay so the trap cannot be recreated", async () => {
+    const { vault } = await loadFixture(fixture);
+    await expect(vault.setSelfCloseDelay(2 * 24 * 60 * 60)).to.be.revertedWithCustomError(
+      vault,
+      "TooSoon"
+    );
+    await expect(vault.setSelfCloseDelay(60)).to.be.revertedWithCustomError(vault, "TooSoon");
+    await expect(vault.setSelfCloseDelay(30 * 60)).to.not.be.reverted;
+  });
 });

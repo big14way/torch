@@ -110,6 +110,12 @@ contract TorchVaultV2 is Ownable, ReentrancyGuard, Pausable {
     }
     mapping(uint256 => Triggers) public triggers;
 
+    // v2: when a close was requested, so a user is never trapped waiting on an
+    // executor that has stopped. The Jul 2026 enclave outage froze fills for
+    // three days; anyone who had clicked Close in that window had no recourse.
+    mapping(uint256 => uint40) public closeRequestedAt;
+    uint64 public selfCloseDelay = 2 hours;
+
     mapping(bytes32 => Market) public markets;
     bytes32[] public marketList;
 
@@ -146,6 +152,8 @@ contract TorchVaultV2 is Ownable, ReentrancyGuard, Pausable {
     event PayoutCapped(uint256 indexed id, uint256 fullPayoutFxrp, uint256 paidFxrp);
     event CapsUpdated(uint256 maxPositionNotionalUsd6, uint256 maxOpenNotionalUsd6);
     event InsuranceWithdrawn(address indexed to, uint256 amount);
+    event CloseRequestCancelled(uint256 indexed id);
+    event SelfClosed(uint256 indexed id, uint256 oraclePrice6);
 
     // --------------------------------------------------------------- errors
 
@@ -161,6 +169,7 @@ contract TorchVaultV2 is Ownable, ReentrancyGuard, Pausable {
     error NotLiquidatable();
     error TriggerNotHit();
     error NotionalCapExceeded();
+    error TooSoon();
 
     // ---------------------------------------------------------- constructor
 
@@ -262,7 +271,39 @@ contract TorchVaultV2 is Ownable, ReentrancyGuard, Pausable {
         if (p.owner != msg.sender) revert NotPositionOwner();
         if (p.status != Status.Open) revert BadStatus();
         p.status = Status.CloseRequested;
+        closeRequestedAt[id] = uint40(block.timestamp);
         emit CloseRequested(id);
+    }
+
+    /// @notice Withdraw your own pending close request and go back to Open.
+    /// Costs nothing and is always available: it is your request to retract.
+    function cancelCloseRequest(uint256 id) external {
+        Position storage p = _positions[id];
+        if (p.owner != msg.sender) revert NotPositionOwner();
+        if (p.status != Status.CloseRequested) revert BadStatus();
+        p.status = Status.Open;
+        delete closeRequestedAt[id];
+        emit CloseRequestCancelled(id);
+    }
+
+    /// @notice Settle your own position at the oracle price when the executor
+    /// has not answered your close request within `selfCloseDelay`.
+    ///
+    /// Without this a stalled executor means a user's margin is locked with no
+    /// recourse, which is exactly what happened when the enclave lost funding
+    /// mid-league. Settling at FTSO is the same price the executor is bounded
+    /// to anyway, so this removes the trap without widening its discretion.
+    /// Not whenNotPaused, for the same reason requestClose is not.
+    function selfClose(uint256 id) external nonReentrant {
+        Position storage p = _positions[id];
+        if (p.owner != msg.sender) revert NotPositionOwner();
+        if (p.status != Status.CloseRequested) revert BadStatus();
+        uint40 requestedAt = closeRequestedAt[id];
+        if (requestedAt == 0 || block.timestamp < requestedAt + selfCloseDelay) revert TooSoon();
+
+        uint256 oracle6 = _price6(markets[p.market].feedId);
+        emit SelfClosed(id, oracle6);
+        _settle(p, oracle6, false);
     }
 
     /// @notice Set (or clear, with 0) a stop-loss / take-profit on your own
@@ -380,6 +421,14 @@ contract TorchVaultV2 is Ownable, ReentrancyGuard, Pausable {
     }
 
     /// @notice v2: notional caps; 0 disables a cap.
+    /// @notice Tune how long a user must wait before settling their own close.
+    /// Bounded so it can never be pushed out far enough to recreate the trap.
+    function setSelfCloseDelay(uint64 _delay) external onlyOwner {
+        if (_delay < 15 minutes || _delay > 1 days) revert TooSoon();
+        selfCloseDelay = _delay;
+        emit ParamsUpdated();
+    }
+
     function setCaps(uint256 _maxPositionNotionalUsd6, uint256 _maxOpenNotionalUsd6) external onlyOwner {
         maxPositionNotionalUsd6 = _maxPositionNotionalUsd6;
         maxOpenNotionalUsd6 = _maxOpenNotionalUsd6;
@@ -531,6 +580,7 @@ contract TorchVaultV2 is Ownable, ReentrancyGuard, Pausable {
         if (fee > 0) fxrp.safeTransfer(treasury, fee);
 
         openNotionalUsd6 -= p.sizeUsd6; // was added at fill
+        delete closeRequestedAt[p.id];
 
         freeMargin[p.owner] += payout;
         p.exitPrice6 = price6;
