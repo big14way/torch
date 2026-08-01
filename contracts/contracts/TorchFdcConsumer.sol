@@ -171,10 +171,7 @@ contract TorchFdcConsumer {
         view
         returns (IWeb2Json.RequestBody calldata req)
     {
-        require(
-            ContractRegistry.getFdcVerification().verifyWeb2Json(proof),
-            "FDC: proof not verified"
-        );
+        require(_verifyProof(proof), "FDC: proof not verified");
         req = proof.data.requestBody;
         require(_eq(req.url, EXPECTED_URL), "FDC: wrong source URL");
         require(_eq(req.body, EXPECTED_BODY), "FDC: wrong account");
@@ -182,6 +179,13 @@ contract TorchFdcConsumer {
         require(_eq(req.headers, EXPECTED_HEADERS), "FDC: wrong headers");
         require(_eq(req.queryParams, EXPECTED_QUERY), "FDC: wrong query");
         require(_eq(req.abiSignature, EXPECTED_ABI_SIG), "FDC: wrong abi signature");
+    }
+
+    /// @dev The Merkle/consensus check itself, split out so tests can exercise
+    /// the binding and replay guards without a live FdcVerification. Production
+    /// behaviour is unchanged: this is the real registry lookup.
+    function _verifyProof(IWeb2Json.Proof calldata proof) internal view virtual returns (bool) {
+        return ContractRegistry.getFdcVerification().verifyWeb2Json(proof);
     }
 
     function _eq(string calldata a, string memory b) private pure returns (bool) {
