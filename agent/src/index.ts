@@ -317,7 +317,32 @@ async function main() {
           if ((fillFailures.get(idStr) ?? 0) >= MAX_FILL_ATTEMPTS) continue; // parked, see below
           inFlight.add(idStr);
           try {
-            const fill = await exchange.open(key, p.isLong, p.sizeUsd6);
+            // Claim the request on-chain BEFORE hedging. Until this lands the
+            // user may cancel freely; after it, cancelling out from under a
+            // live hedge is time-boxed. Best-effort: if it fails we still fill,
+            // we just keep carrying the free-cancel risk for this one.
+            try {
+              const acceptHash = await wallet.writeContract({
+                ...vault,
+                functionName: "acceptRequest",
+                args: [p.id],
+                gas: 200_000n,
+                chain: null,
+              });
+              // Plain receipt wait, not waitMined: acceptRequest leaves the
+              // status at Requested, so a status-based fallback would "confirm"
+              // unconditionally. If the receipt lags we fall through to the
+              // catch and hedge unclaimed, which is the honest outcome.
+              await pub.waitForTransactionReceipt({ hash: acceptHash, timeout: 60_000, pollingInterval: 3_000 });
+            } catch (acceptErr) {
+              log(p.id, `acceptRequest failed, hedging unclaimed: ${(acceptErr as Error).message.slice(0, 80)}`);
+            }
+
+            // Deterministic per position, so a restart mid-order finds the
+            // existing fill instead of placing a second one. HL wants a
+            // 16-byte hex cloid; the vault id is unique and never reused.
+            const cloid = ("0x" + p.id.toString(16).padStart(32, "0")) as string;
+            const fill = await exchange.open(key, p.isLong, p.sizeUsd6, cloid);
             try {
               const hash = await wallet.writeContract({
                 ...vault,

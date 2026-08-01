@@ -21,12 +21,22 @@ export interface Fill {
   price6: bigint; // asset USD price, 6 decimals
   oid: bigint; // exchange order id (mock mode issues internal sequence numbers, not exchange ids)
   venue?: string; // where it actually filled, for honest logging
+  /** Size that actually filled, in the asset's own units. Undefined when the
+   * venue does not report it (mock, FTSO fallback). Previously dropped on the
+   * floor, which meant a partial fill was recorded on-chain at full size and
+   * the difference became unhedged exposure against the insurance fund. */
+  szFilled?: number;
+  /** Size we asked for, so callers can judge how short a partial came up. */
+  szRequested?: number;
 }
 
 export interface Exchange {
   name: string;
-  /** Open a market position of sizeUsd6 notional. */
-  open(market: string, isLong: boolean, sizeUsd6: bigint): Promise<Fill>;
+  /** Open a market position of sizeUsd6 notional. `cloid` is a caller-supplied
+   * client order id: pass a value derived from the vault position and the
+   * adapter will refuse to place a second order for the same position after a
+   * restart. */
+  open(market: string, isLong: boolean, sizeUsd6: bigint, cloid?: string): Promise<Fill>;
   /** Close the mirrored position. */
   close(market: string, isLong: boolean, sizeUsd6: bigint): Promise<Fill>;
 }
@@ -38,7 +48,7 @@ export class MockExchange implements Exchange {
   private nextOid = 1n;
   constructor(private markPrice6: (market: string) => Promise<bigint>) {}
 
-  async open(market: string): Promise<Fill> {
+  async open(market: string, _isLong?: boolean, _sizeUsd6?: bigint, _cloid?: string): Promise<Fill> {
     const price6 = await this.markPrice6(market);
     return { price6, oid: this.nextOid++ };
   }
@@ -130,14 +140,24 @@ export class HyperliquidTestnet implements Exchange {
     return BigInt(Math.round(parseFloat(px) * 1e6));
   }
 
-  async open(market: string, isLong: boolean, sizeUsd6: bigint): Promise<Fill> {
+  async open(market: string, isLong: boolean, sizeUsd6: bigint, cloid?: string): Promise<Fill> {
     const meta = await this.assetMeta(HL_COIN[market]);
     if (!meta) return this.fallbackFill(market); // e.g. XRP: not listed on HL testnet
+
+    // A crash between placing this order and the on-chain confirm used to mean
+    // a SECOND real order on restart, because the in-flight set lived only in
+    // memory. Ask the exchange whether this position already has a fill before
+    // placing anything.
+    if (cloid) {
+      const prior = await this.findFillByCloid(cloid);
+      if (prior) return prior;
+    }
     this.requireMinNotional(sizeUsd6);
     const client = await this.client();
     const mid6 = await this.mid6(market);
     // lot size = notionalUsd / price, rounded to the asset's szDecimals
     const sz = (Number(sizeUsd6) / Number(mid6)).toFixed(meta.szDecimals);
+    const szNum = parseFloat(sz);
     const result = await client.order({
       orders: [
         {
@@ -147,12 +167,13 @@ export class HyperliquidTestnet implements Exchange {
           s: sz,
           r: false,
           t: { limit: { tif: "Ioc" } },
+          ...(cloid ? { c: cloid } : {}),
         },
       ],
       grouping: "na",
       ...(this.builderField() ? { builder: this.builderField() } : {}),
     });
-    return this.readFill(result, "open");
+    return this.requireFullFill(this.readFill(result, "open", szNum), market, isLong, "open");
   }
 
   async close(market: string, isLong: boolean, sizeUsd6: bigint): Promise<Fill> {
@@ -162,6 +183,7 @@ export class HyperliquidTestnet implements Exchange {
     const client = await this.client();
     const mid6 = await this.mid6(market);
     const sz = (Number(sizeUsd6) / Number(mid6)).toFixed(meta.szDecimals);
+    const szNum = parseFloat(sz);
     const result = await client.order({
       orders: [
         {
@@ -176,7 +198,60 @@ export class HyperliquidTestnet implements Exchange {
       grouping: "na",
       ...(this.builderField() ? { builder: this.builderField() } : {}),
     });
-    return this.readFill(result, "close");
+    return this.readFill(result, "close", szNum);
+  }
+
+  /** Look for an existing fill carrying this client order id. Makes open()
+   * idempotent across a restart: the exchange, not our memory, is the record
+   * of what we already did. */
+  private async findFillByCloid(cloid: string): Promise<Fill | undefined> {
+    try {
+      const { privateKeyToAccount } = await import("viem/accounts");
+      const user = privateKeyToAccount(this.privateKey as `0x${string}`).address;
+      const res = await fetch(`${this.apiUrl}/info`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ type: "userFills", user }),
+      });
+      if (!res.ok) return undefined;
+      const fills = (await res.json()) as Array<Record<string, any>>;
+      if (!Array.isArray(fills)) return undefined;
+      const hit = fills.find((f) => f.cloid === cloid);
+      if (!hit) return undefined;
+      return {
+        price6: BigInt(Math.round(parseFloat(hit.px) * 1e6)),
+        oid: BigInt(hit.oid ?? 0),
+        venue: "hyperliquid-testnet (recovered by cloid)",
+        szFilled: hit.sz !== undefined ? parseFloat(hit.sz) : undefined,
+      };
+    } catch {
+      // Never let a reconciliation lookup block trading; the caller's retry
+      // cap bounds the damage if this is wrong.
+      return undefined;
+    }
+  }
+
+  /** Flatten `sz` asset units of an existing position. Used to undo a partial
+   * open before it can become unhedged exposure. */
+  private async reduceOnly(market: string, wasLong: boolean, sz: number): Promise<void> {
+    const meta = await this.assetMeta(HL_COIN[market]);
+    if (!meta || sz <= 0) return;
+    const client = await this.client();
+    const mid6 = await this.mid6(market);
+    await client.order({
+      orders: [
+        {
+          a: meta.index,
+          b: !wasLong,
+          p: this.slippagePx(mid6, !wasLong),
+          s: sz.toFixed(meta.szDecimals),
+          r: true,
+          t: { limit: { tif: "Ioc" } },
+        },
+      ],
+      grouping: "na",
+      ...(this.builderField() ? { builder: this.builderField() } : {}),
+    });
   }
 
   // HL rejects orders below ~$10 notional.
@@ -197,15 +272,41 @@ export class HyperliquidTestnet implements Exchange {
     return { price6: await this.markFallback(market), oid: 0n, venue: "ftso-mark (not on HL testnet)" };
   }
 
-  private readFill(result: any, kind: string): Fill {
+  private readFill(result: any, kind: string, szRequested?: number): Fill {
     const status = result?.response?.data?.statuses?.[0];
     const filled = status?.filled;
     if (!filled) throw new Error(`HL ${kind} not filled: ${JSON.stringify(status)}`);
+    const szFilled = filled.totalSz !== undefined ? parseFloat(filled.totalSz) : undefined;
     return {
       price6: BigInt(Math.round(parseFloat(filled.avgPx) * 1e6)),
       oid: BigInt(filled.oid ?? 0),
       venue: "hyperliquid-testnet",
+      szFilled,
+      szRequested,
     };
+  }
+
+  /** IOC orders can come back partially filled. The vault records the position
+   * at its FULL notional, so anything short of the ask is naked directional
+   * risk carried by the insurance fund. Unwind the partial and fail loudly:
+   * the position stays Requested and the (now capped) retry can try again with
+   * a flat book, which is strictly safer than silently running unhedged. */
+  private async requireFullFill(f: Fill, market: string, isLong: boolean, kind: string): Promise<Fill> {
+    const want = f.szRequested;
+    const got = f.szFilled;
+    if (want === undefined || got === undefined || want <= 0) return f; // venue did not report size
+    if (got >= want * 0.999) return f;
+    if (kind === "open") {
+      try {
+        await this.reduceOnly(market, isLong, got);
+      } catch (e) {
+        throw new Error(
+          `HL open filled ${got}/${want} and the unwind FAILED (${(e as Error).message}). ` +
+            `Manual check needed: the book is not flat.`
+        );
+      }
+    }
+    throw new Error(`HL ${kind} partially filled ${got}/${want}; unwound, will retry`);
   }
 
   private metaCache: Record<string, { index: number; szDecimals: number } | null> = {};

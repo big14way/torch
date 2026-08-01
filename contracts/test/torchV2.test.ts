@@ -411,4 +411,70 @@ describe("TorchVaultV2", () => {
     await expect(vault.setSelfCloseDelay(60)).to.be.revertedWithCustomError(vault, "TooSoon");
     await expect(vault.setSelfCloseDelay(30 * 60)).to.not.be.reverted;
   });
+
+  it("keeps cancel free until the executor accepts the request", async () => {
+    const f = await loadFixture(fixture);
+    const { vault, alice } = f;
+    await vault.connect(alice).deposit(FX(1_000));
+    await vault.connect(alice).openPosition(BTC, true, FX(100), 20);
+    const id = (await vault.positionsCount()) - 1n;
+    // nobody has hedged anything yet, so cancelling costs the operator nothing
+    await expect(vault.connect(alice).cancelRequest(id)).to.not.be.reverted;
+    expect((await vault.getPosition(id)).status).to.equal(6); // Cancelled
+  });
+
+  it("stops a user cancelling out from under a live hedge", async () => {
+    const f = await loadFixture(fixture);
+    const { vault, executor, alice } = f;
+    await vault.connect(alice).deposit(FX(1_000));
+    await vault.connect(alice).openPosition(BTC, true, FX(100), 20);
+    const id = (await vault.positionsCount()) - 1n;
+
+    await vault.connect(executor).acceptRequest(id); // executor goes to hedge
+    await expect(vault.connect(alice).cancelRequest(id)).to.be.revertedWithCustomError(
+      vault,
+      "TooSoon"
+    );
+
+    // but the user is never stuck: the timeout always expires
+    await ethers.provider.send("evm_increaseTime", [30 * 60 + 1]);
+    await ethers.provider.send("evm_mine", []);
+    await expect(vault.connect(alice).cancelRequest(id)).to.not.be.reverted;
+  });
+
+  it("clears the accept stamp once the fill lands", async () => {
+    const f = await loadFixture(fixture);
+    const { vault, executor, alice } = f;
+    await vault.connect(alice).deposit(FX(1_000));
+    await vault.connect(alice).openPosition(BTC, true, FX(100), 20);
+    const id = (await vault.positionsCount()) - 1n;
+    await vault.connect(executor).acceptRequest(id);
+    expect(await vault.fillAcceptedAt(id)).to.be.greaterThan(0);
+    await vault.connect(executor).confirmFill(id, P(100_000), 5n);
+    expect(await vault.fillAcceptedAt(id)).to.equal(0);
+  });
+
+  it("only the executor can accept, and only a pending request", async () => {
+    const f = await loadFixture(fixture);
+    const { vault, alice } = f;
+    await vault.connect(alice).deposit(FX(1_000));
+    await vault.connect(alice).openPosition(BTC, true, FX(100), 20);
+    const id = (await vault.positionsCount()) - 1n;
+    await expect(vault.connect(alice).acceptRequest(id)).to.be.revertedWithCustomError(
+      vault,
+      "NotExecutor"
+    );
+    const open = await openLong(f);
+    await expect(f.vault.connect(f.executor).acceptRequest(open)).to.be.revertedWithCustomError(
+      vault,
+      "BadStatus"
+    );
+  });
+
+  it("bounds the accept timeout", async () => {
+    const { vault } = await loadFixture(fixture);
+    await expect(vault.setAcceptTimeout(60)).to.be.revertedWithCustomError(vault, "TooSoon");
+    await expect(vault.setAcceptTimeout(3 * 60 * 60)).to.be.revertedWithCustomError(vault, "TooSoon");
+    await expect(vault.setAcceptTimeout(10 * 60)).to.not.be.reverted;
+  });
 });

@@ -116,6 +116,13 @@ contract TorchVaultV2 is Ownable, ReentrancyGuard, Pausable {
     mapping(uint256 => uint40) public closeRequestedAt;
     uint64 public selfCloseDelay = 2 hours;
 
+    // v2: when the executor accepted a request and went to hedge it. Until it
+    // does, a user may cancel freely. After it does, cancelling would strand a
+    // live hedge, so the user waits out acceptTimeout first -- which still
+    // guarantees they are never stuck if the executor dies mid-fill.
+    mapping(uint256 => uint40) public fillAcceptedAt;
+    uint64 public acceptTimeout = 30 minutes;
+
     mapping(bytes32 => Market) public markets;
     bytes32[] public marketList;
 
@@ -154,6 +161,7 @@ contract TorchVaultV2 is Ownable, ReentrancyGuard, Pausable {
     event InsuranceWithdrawn(address indexed to, uint256 amount);
     event CloseRequestCancelled(uint256 indexed id);
     event SelfClosed(uint256 indexed id, uint256 oraclePrice6);
+    event RequestAccepted(uint256 indexed id);
 
     // --------------------------------------------------------------- errors
 
@@ -259,6 +267,13 @@ contract TorchVaultV2 is Ownable, ReentrancyGuard, Pausable {
         Position storage p = _positions[id];
         if (p.owner != msg.sender) revert NotPositionOwner();
         if (p.status != Status.Requested) revert BadStatus();
+        // Once the executor has accepted, a hedge is live on the exchange.
+        // Cancelling then hands the user a free look at the market at the
+        // operator's expense, so make them wait out acceptTimeout. They are
+        // still never permanently stuck: the timeout always expires.
+        uint40 acceptedAt = fillAcceptedAt[id];
+        if (acceptedAt != 0 && block.timestamp < acceptedAt + acceptTimeout) revert TooSoon();
+        delete fillAcceptedAt[id];
         p.status = Status.Cancelled;
         freeMargin[msg.sender] += p.marginFxrp;
         emit RequestCancelled(id);
@@ -346,6 +361,15 @@ contract TorchVaultV2 is Ownable, ReentrancyGuard, Pausable {
 
     // -------------------------------------------------------- executor flow
 
+    /// @notice Executor claims a pending request before it goes to hedge it.
+    /// Optional: skipping it only means the user keeps a free cancel.
+    function acceptRequest(uint256 id) external onlyExecutor whenNotPaused {
+        Position storage p = _positions[id];
+        if (p.status != Status.Requested) revert BadStatus();
+        fillAcceptedAt[id] = uint40(block.timestamp);
+        emit RequestAccepted(id);
+    }
+
     /// @notice Executor confirms the Hyperliquid fill. Reported entry price
     /// must sit inside the FTSO deviation band for the market's feed.
     function confirmFill(uint256 id, uint256 entryPrice6, uint64 hlOid)
@@ -376,6 +400,7 @@ contract TorchVaultV2 is Ownable, ReentrancyGuard, Pausable {
         p.hlOid = hlOid;
         p.status = Status.Open;
         p.openedAt = uint40(block.timestamp);
+        delete fillAcceptedAt[id];
         emit PositionOpened(id, entryPrice6, hlOid, feeFxrp);
     }
 
@@ -423,6 +448,14 @@ contract TorchVaultV2 is Ownable, ReentrancyGuard, Pausable {
     /// @notice v2: notional caps; 0 disables a cap.
     /// @notice Tune how long a user must wait before settling their own close.
     /// Bounded so it can never be pushed out far enough to recreate the trap.
+    /// @notice How long a user waits to cancel after the executor accepted.
+    /// Bounded so it can never become a way to hold a request hostage.
+    function setAcceptTimeout(uint64 _timeout) external onlyOwner {
+        if (_timeout < 5 minutes || _timeout > 2 hours) revert TooSoon();
+        acceptTimeout = _timeout;
+        emit ParamsUpdated();
+    }
+
     function setSelfCloseDelay(uint64 _delay) external onlyOwner {
         if (_delay < 15 minutes || _delay > 1 days) revert TooSoon();
         selfCloseDelay = _delay;
