@@ -39,6 +39,9 @@ const config: HardhatUserConfig = {
     version: "0.8.25",
     settings: {
       optimizer: { enabled: true, runs: 200 },
+      // Flare supports up to the Cancun hard fork. Pin it so a future compiler
+      // bump (>=0.8.30 defaults to prague) cannot silently emit unsupported opcodes.
+      evmVersion: "cancun",
     },
   },
   networks: {

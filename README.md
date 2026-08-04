@@ -58,7 +58,7 @@ Stated honestly. This is v0, a verifiable operator, not yet a trustless bridge:
 2. The Hyperliquid key the agent holds is an API wallet, which can trade but can never withdraw. Compromising the agent does not give custody.
 3. Positive PnL is paid from an explicit on-chain insurance fund. Negative PnL accrues to it. Nothing is hidden in an off-chain promise.
 4. What the FDC attestation does and does not prove: it proves Flare's validators independently re-fetched the exchange and found that the order id the vault recorded really exists in our account with the right market and side, with every request parameter pinned on-chain. It does **not** compare the fill's price, size or timestamp to the position, and no vault code path reads it, so it is an after-the-fact receipt anyone can reproduce rather than a gate on settlement. Both halves are stated on the [Verify page](https://usetorch.xyz/verify).
-5. Roadmap: FDC Web2Json attestations of Hyperliquid fills replace bare executor reports, and the executor ports onto Flare Confidential Compute as a Flare Confidential Extension (code hash pinned on-chain, instructions signed by Flare's data providers — see [fce-orderbook](https://github.com/flare-foundation/fce-orderbook)). Protocol Managed Wallets, still in development, are the eventual endgame.
+5. Roadmap: FDC Web2Json attestations of Hyperliquid fills replace bare executor reports, and the executor ports onto Flare Confidential Compute as a Flare Confidential Extension (instructions submitted on-chain through the extension's registered InstructionSender contract; results signed inside the TEE and accepted by Flare's data providers only from a code hash whitelisted on-chain — see [fce-orderbook](https://github.com/flare-foundation/fce-orderbook)). Protocol Managed Wallets, still in development, are the eventual endgame.
 
 ## Repo layout
 
@@ -161,13 +161,13 @@ To reproduce the deployment from scratch:
 
 1. Get C2FLR gas and testnet FXRP from the Coston2 faucet: https://faucet.flare.network
 2. Copy `contracts/.env.example` to `contracts/.env`, set `PRIVATE_KEY` and `FXRP_ADDRESS` (the FXRP token address on Coston2, readable from your faucet tx on the Coston2 explorer).
-3. Resolve the live FtsoV2 address dynamically, never hardcode it:
+3. FtsoV2 needs no configuration: the reader resolves it on-chain through the FlareContractRegistry on every read, so an FtsoV2 redeploy is picked up automatically. To sanity-check what the registry currently points at:
 
 ```bash
 npm run resolve:ftso -w contracts
 ```
 
-4. Put the printed address in `.env` as `FTSOV2_ADDRESS`, set `EXECUTOR_ADDRESS` to the agent's address, then:
+4. Set `EXECUTOR_ADDRESS` to the agent's address, then:
 
 ```bash
 npm run deploy:coston2

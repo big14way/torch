@@ -32,9 +32,10 @@ export function HowItWorksContent() {
           verified by Flare's validators here
         </a>
         . Next: the executor ports onto Flare Confidential Compute as a Flare Confidential
-        Extension — code hash pinned on-chain, instructions signed by Flare's data providers — so
-        no single operator can stall or drain it. Protocol Managed Wallets, still in development,
-        are the eventual endgame.
+        Extension — instructions submitted on-chain through a registered InstructionSender
+        contract, results signed inside the TEE and accepted by Flare's data providers only from
+        a code hash whitelisted on-chain — so no single operator can stall or drain it. Protocol
+        Managed Wallets, still in development, are the eventual endgame.
       </p>
     </div>
   );

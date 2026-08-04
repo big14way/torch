@@ -58,17 +58,17 @@ async function main() {
     console.log(`MockFXRP:   ${fxrpAddress}`);
     console.log(`MockFtsoV2: ${oracleAddress}`);
   } else {
-    // Coston2 / Songbird / Flare. All three env values are required.
+    // Coston2 / Songbird / Flare.
     // FXRP_ADDRESS: testnet FXRP from the Coston2 faucet page, or resolve it
     //   dynamically through the FAssets AssetManager (see README).
-    // FTSOV2_ADDRESS: run `npm run resolve:ftso` (dynamic registry lookup).
     // EXECUTOR_ADDRESS: the agent's address (TEE identity in production).
+    // FtsoV2 needs no env: the reader resolves it through the
+    //   FlareContractRegistry at read time (sanity-check with `npm run resolve:ftso`).
     fxrpAddress = requireEnv("FXRP_ADDRESS");
-    const ftsoV2 = requireEnv("FTSOV2_ADDRESS");
     executorAddress = process.env.EXECUTOR_ADDRESS || deployer.address;
 
     const Reader = await ethers.getContractFactory("FtsoV2Reader");
-    const reader = await Reader.deploy(ftsoV2);
+    const reader = await Reader.deploy();
     await reader.waitForDeployment();
     oracleAddress = await reader.getAddress();
     console.log(`FtsoV2Reader: ${oracleAddress}`);
