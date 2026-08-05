@@ -1,17 +1,29 @@
 # Torch
 
-Trade perps with your XRP. Margin stays on Flare, execution happens on Hyperliquid's orderbook, and the keys that bridge the two live inside a TEE.
+Trade perps with your XRP. Margin stays on Flare, execution is built to route to Hyperliquid's orderbook (today's deployment mock-fills at the FTSO mark — see [current execution mode](#what-settles-where)), and the keys that bridge the two live inside a TEE.
 
 **Live on Coston2 testnet: https://usetorch.xyz** (usetorch.vercel.app also works) — grab free C2FLR + FTestXRP from the [Flare faucet](https://faucet.flare.network), deposit, trade. Three minutes, costs nothing.
 
-What's live, staged, and next: [ROADMAP.md](ROADMAP.md).
+What's live, staged, and next: [ROADMAP.md](ROADMAP.md). At a glance, so no sentence below has to carry more weight than the evidence does:
+
+| Piece | Status | Check it |
+| --- | --- | --- |
+| Coston2 vault + trading terminal | **Live** | https://usetorch.xyz + address table below |
+| FTSOv2 price band on every settlement | **Live** | settlements revert outside 1.5% of the enshrined feed |
+| TEE enclave signs fills, key never seen by anyone | **Live** | [enclave status endpoint](https://cc1525a5ca15c4c8ef2668e72bc888f5a0c3239a.dstack-pha-prod9.phala.network) |
+| Execution mode | **Live = `mock`**: fills at the FTSO mark, no exchange orders | published by the enclave itself, rendered on [/verify](https://usetorch.xyz/verify) |
+| Hyperliquid exchange routing | **Proven on testnet** — 20 real BTC fills, the 2 most recent from inside a TDX enclave | HL testnet info API, account in the Hyperliquid section |
+| FDC fill attestation | **Proven on-chain**, reproducible for exchange-routed fills only | three tx receipts below |
+| One-signature margin from a bare XRPL wallet | **Proven on-chain** (spike, not yet product UI) | XRPL + Coston2 receipts below |
+| Hyperliquid builder-code revenue | **Wired, never exercised** | `HL_BUILDER_ADDRESS` in the adapter, unset today |
+| FCE migration · PMW · FDC-gated settlement | **Planned** | [ROADMAP.md](ROADMAP.md) |
 
 Built for the Flare Summer Signal hackathon, entering both bounties:
 
-- Interoperable Asset Products: FXRP margin on Flare routed to external Hyperliquid liquidity
+- Interoperable Asset Products: FXRP margin on Flare with a hedge leg built to route to external Hyperliquid liquidity (proven on testnet; mock in the live deployment)
 - Confidential Compute Apps: a TEE-held executor key with a no-withdrawal exchange wallet, migrating onto Flare Confidential Compute as a Flare Confidential Extension (FCE); Protocol Managed Wallets are the later endgame once they ship
 
-The XRP community holds one of the largest idle asset bases in crypto. FXRP-margined perps do already exist on Flare — [SparkDEX Eternal](https://flare.network/news/sparkdex-eternal-brings-perpetuals-to-flare) takes FXRP as collateral — so the gap Torch closes is not "can you trade with XRP" but **"can you check that the trade was honest."** Torch routes FXRP margin to Hyperliquid's orderbook depth and makes every leg checkable: settlement bounded on-chain by Flare's enshrined FTSOv2 (the tx reverts if the price is off), the signing key sealed in an attested TEE that can settle but never withdraw, and exchange fills re-checkable on-chain by Flare's own validators through FDC. The operator's remaining discretion is bounded and named rather than hidden, and the [Verify page](https://usetorch.xyz/verify) publishes what is *not* proven alongside what is.
+The XRP community holds one of the largest idle asset bases in crypto. FXRP-margined perps do already exist on Flare — [SparkDEX Eternal](https://flare.network/news/sparkdex-eternal-brings-perpetuals-to-flare) takes FXRP as collateral — so the gap Torch closes is not "can you trade with XRP" but **"can you check that the trade was honest."** Torch routes FXRP margin toward Hyperliquid's orderbook depth (hedge leg proven on testnet; the live deployment mock-fills at the FTSO mark) and makes each leg checkable: settlement bounded on-chain by Flare's enshrined FTSOv2 (the tx reverts if the price is off), the signing key sealed in an attested TEE that can settle but never withdraw, and exchange fills on venue-listed markets re-checkable on-chain by Flare's own validators through FDC — demonstrated on-chain for a real enclave fill. The operator's remaining discretion is bounded and named rather than hidden, and the [Verify page](https://usetorch.xyz/verify) publishes what is *not* proven alongside what is.
 
 ## How it works
 
@@ -32,11 +44,11 @@ The question everyone asks: if Hyperliquid settles trades on its own book, what 
 
 **The user's trade settles on Flare. Always.** You deposit FXRP into the vault and trade against it: entry, exit, PnL, and liquidations are computed and settled by the TorchVault contract on Flare, in FXRP, priced against FTSOv2. You never hold a Hyperliquid account, never touch USDC, never leave Flare. Torch rebuilds the whole market structure on Flare — request, fill, close, liquidate, margin, maintenance, insurance — everything except the orderbook.
 
-**Hyperliquid is where the house hedges.** When you go long, the vault is your counterparty; unhedged, the insurance fund would carry every trader's PnL. So the executor mirrors positions onto Hyperliquid's book to keep the operator's exposure flat — trader wins are recouped from the hedge, and the hedge fills settle in USDC on Hyperliquid because that is the operator's risk book, not yours.
+**Hyperliquid is where the house hedges — by design; nothing is hedged in today's mock mode.** When you go long, the vault is your counterparty; unhedged, the insurance fund carries every trader's PnL, which is exactly the current state and exactly what the hedge removes once routing turns on. So the design mirrors positions onto Hyperliquid's book to keep the operator's exposure flat — the hedge earns what traders win, though moving that PnL back into the on-chain insurance fund is a manual operator step today, not an automatic bridge — and hedge fills settle in USDC on Hyperliquid because that is the operator's risk book, not yours.
 
-**Current execution mode.** The deployed enclave runs with `EXECUTION_MODE=mock`: it settles at the FTSO mark and no order reaches an exchange today. The Hyperliquid leg was proven separately on testnet (real fills from inside the enclave, one of them FDC-attested on-chain), and flipping to it is a config change rather than new code. The live mode is published by the enclave's own status endpoint and rendered on the Verify page, so the site cannot quietly disagree with reality.
+**Current execution mode.** The deployed enclave runs with `EXECUTION_MODE=mock`: it settles at the FTSO mark and no order reaches an exchange today. The Hyperliquid leg was proven separately on testnet (real fills from inside the enclave, one of them FDC-attested on-chain), and flipping to it is a config change rather than new code — with one honest limit: Hyperliquid's testnet lists no XRP market, so after the flip the venue-listed markets (BTC, ETH and others) route to the book while XRP itself keeps settling at the FTSO mark. The live mode is published by the enclave's own status endpoint and rendered on the Verify page, so the site cannot quietly disagree with reality.
 
-**FTSO is the glue between the legs.** The executor's reported fill must sit within 1.5% of the live FTSO feed or the contract reverts, which both stops the operator from inventing prices and forces the hedge leg to stay coherent with the Flare settlement price. Any drift between the venues inside that band is basis risk carried by the operator, never by the user. FDC then proves after the fact that a fill with the order id the vault recorded really exists on Hyperliquid with the right market and side (price and size are not equivalence-checked; see the trust model below).
+**FTSO is the glue between the legs.** The executor's reported fill must sit within 1.5% of the live FTSO feed or the contract reverts, which both stops the operator from inventing prices and forces the hedge leg to stay coherent with the Flare settlement price. Any drift between the venues inside that band is basis risk carried by the operator, never by the user. FDC can then prove after the fact that a fill with the order id the vault recorded really exists on Hyperliquid with the right market and side — demonstrated on-chain for a real enclave fill; mock fills carry no exchange order id to attest (price and size are not equivalence-checked; see the trust model below).
 
 In short: Flare is the market, FTSO is the settlement judge, FDC is the audit, and Hyperliquid is borrowed liquidity. (In the current Coston2 deployment the enclave fills at the FTSO mark itself, so today the live loop runs entirely on Flare; the Hyperliquid hedge leg is proven separately on testnet and slots in when the enclave gains exchange egress.)
 
@@ -44,9 +56,9 @@ In short: Flare is the market, FTSO is the settlement judge, FDC is the audit, a
 
 Two rails, both already in the code, stated with the same honesty as everything else:
 
-1. **Vault fees, live on-chain today.** The vault charges **8 bps on open, 8 bps on close** (0.08% of notional each way) plus **100 bps on liquidations**, paid in FXRP straight to the treasury address — see `openFeeBps` / `closeFeeBps` / `liquidationFeeBps` in [TorchVault.sol](contracts/contracts/TorchVault.sol). This is the primary revenue line, and it scales with exactly one thing: FXRP margin volume. Torch's revenue metric *is* Flare's FXRP-adoption metric.
+1. **Vault fees, live on-chain today.** The vault charges **8 bps on open, 8 bps on close** (0.08% of notional each way) plus **100 bps on liquidations**, paid in FXRP — see `openFeeBps` / `closeFeeBps` / `liquidationFeeBps` in [TorchVault.sol](contracts/contracts/TorchVault.sol). Precisely: open fees go straight to the treasury; in the live v1 vault, close and liquidation fees reach the treasury only on losing closes (on winning closes they accrue to the insurance fund — v2 routes them to the treasury in every case). This is the primary revenue line, and it scales with exactly one thing: FXRP margin volume. Torch's revenue metric *is* Flare's FXRP-adoption metric.
 
-2. **Hyperliquid builder codes, wired into the adapter.** Every order the executor routes carries a builder tag (`HL_BUILDER_ADDRESS`, fee in tenths of a bp, perp cap 10 bps) — Hyperliquid's native, on-chain revenue rail for order-flow routers, collected by the venue automatically per fill. Honest footnote: in the current architecture the only Hyperliquid flow is the operator's own hedge book, where a builder fee is circular; this rail earns real third-party revenue as Torch's routing footprint grows beyond the house book (e.g. direct-account trading through the Torch terminal). It's wired now so the rail is proven, not theoretical.
+2. **Hyperliquid builder codes, wired into the adapter.** Orders the executor routes carry a builder tag when `HL_BUILDER_ADDRESS` is set (fee in tenths of a bp, perp cap 10 bps) — Hyperliquid's native, on-chain revenue rail for order-flow routers, collected by the venue automatically per fill. Honest footnote: the address is unset in the live deployment and no builder-tagged order has ever been placed; and in the current architecture the only Hyperliquid flow is the operator's own hedge book, where a builder fee is circular. The rail earns real third-party revenue only as Torch's routing footprint grows beyond the house book (e.g. direct-account trading through the Torch terminal). It's wired now: turning it on is a config flag plus a one-time `approveBuilderFee`, not new code.
 
 No token, no yield promises. Fees on real flow, denominated in the asset the community already holds.
 
@@ -54,7 +66,7 @@ No token, no yield promises. Fees on real flow, denominated in the asset the com
 
 Stated honestly. This is v0, a verifiable operator, not yet a trustless bridge:
 
-1. Every price the executor reports is checked on-chain against Flare FTSOv2 and reverts if it sits outside a 1.5% band, so the operator cannot invent prices. Inside that band it still chooses, which is real discretion and worth naming: from the v2 vault a reported price must additionally never be *worse for the user* than the oracle, and liquidation eligibility is decided at a fresh oracle read rather than at the executor's number.
+1. Every price the executor reports is checked on-chain against Flare FTSOv2 and reverts if it sits outside a 1.5% band, so the operator cannot invent prices. Inside that band it still chooses, which is real discretion and worth naming: the v2 vault (in this repo, deploying as Season 2 closes) additionally rejects any reported price *worse for the user* than the oracle and decides liquidation eligibility at a fresh oracle read — the live v1 vault enforces the band alone.
 2. The Hyperliquid key the agent holds is an API wallet, which can trade but can never withdraw. Compromising the agent does not give custody.
 3. Positive PnL is paid from an explicit on-chain insurance fund. Negative PnL accrues to it. Nothing is hidden in an off-chain promise.
 4. What the FDC attestation does and does not prove: it proves Flare's validators independently re-fetched the exchange and found that the order id the vault recorded really exists in our account with the right market and side, with every request parameter pinned on-chain. It does **not** compare the fill's price, size or timestamp to the position, and no vault code path reads it, so it is an after-the-fact receipt anyone can reproduce rather than a gate on settlement. Both halves are stated on the [Verify page](https://usetorch.xyz/verify).
@@ -110,7 +122,7 @@ Then in the app:
 
 1. Connect wallet, hit `Faucet: 10,000 tFXRP`.
 2. Deposit 2,000.
-3. Long XRP at 5x with 500 margin. Watch the route trace light up Flare vault, then TEE agent, then Hyperliquid as the fill confirms.
+3. Long XRP at 5x with 500 margin. Watch the route trace light up Flare vault, then TEE agent, then the settlement mark as the fill confirms (the third hop is labelled Hyperliquid only when exchange routing is actually on).
 4. Let the price walker move the market, watch live PnL tick.
 5. Close, watch settlement land back in free margin, withdraw.
 6. Optional: open a 10x position and wait. The walker will eventually push it below maintenance margin and you will see the agent liquidate it.
@@ -139,19 +151,19 @@ Markets XRP, BTC, ETH, HYPE, SOL and DOGE are listed at up to 10x (the last thre
 The executor key is generated *inside* a hardware TEE (Phala Cloud, Intel TDX) and never leaves it. The running image and its config are bound by a remote-attestation report, and the enclave signs `confirmFill` from a key no operator has ever seen. The vault's `executor` was pointed at the enclave-generated address via `setExecutor` (owner-only, no redeploy).
 
 - Live status endpoint (returns the current executor address + attestation mode): https://cc1525a5ca15c4c8ef2668e72bc888f5a0c3239a.dstack-pha-prod9.phala.network
-- App id `cc1525a5ca15c4c8ef2668e72bc888f5a0c3239a`, compose hash `3b1e6ed0f43a59df4b0a2028701106c24a4363f680b92be7bdf851b9c9bac332`, aggregated measurement `b33eb22ae8eed320d1ded19532519296c2d60931b5d9f64e5de34a5b9a70e800` (bound by TDX).
+- App id `cc1525a5ca15c4c8ef2668e72bc888f5a0c3239a`. The compose hash and TDX measurement rotate on every CVM update, so read the current values from the CVM's attestation report rather than from numbers frozen in a README; the compose file in this repo now pins the executor image by digest so the attestation binds exact code, not a mutable tag — the live CVM picks that up at its next deploy.
 
-In this deployment the enclave fills at the FTSO mark; the live Hyperliquid hop (proven separately on testnet) routes when the TEE is granted outbound access to the exchange. In mock mode the stored `hlOid` is an internal sequence number, not an exchange order id — only exchange-routed fills can be FDC-attested. Migration target: a Flare Confidential Extension on FCC (Songbird), with Protocol Managed Wallets as the eventual endgame.
+In this deployment the enclave fills at the FTSO mark; the live Hyperliquid hop (proven separately on testnet with BTC) routes when the TEE is granted outbound access to the exchange — noting the gap flagged above: Hyperliquid testnet lists no XRP market, so XRP keeps settling at the FTSO mark even then. In mock mode the stored `hlOid` is an internal sequence number, not an exchange order id — only exchange-routed fills can be FDC-attested. Migration target: a Flare Confidential Extension on FCC (Songbird), with Protocol Managed Wallets as the eventual endgame.
 
 **FDC Web2Json fill attestation (the path off trusted reports):**
 
-The endgame of the trust model is that a fill is not believed because our executor reported it, but because Flare's own validators re-fetched Hyperliquid and agreed. That is live, and it is bound to real positions:
+The endgame of the trust model is that a fill is not believed because our executor reported it, but because Flare's own validators re-fetched Hyperliquid and agreed. That has run on-chain — proven for real exchange fills and bound to a real position, though today's mock fills carry nothing to attest:
 
 - **A vault position is bound to the exchange fill that backs it.** `attestFillForPosition(positionId, proof)` reads the Hyperliquid order id the vault stored at `confirmFill`, reconstructs the exact JQ transform for that order id on-chain, and only accepts an FDC proof whose request matches — with every degree of freedom pinned: URL, account body, HTTP method, headers, query params, JQ, and the ABI signature (a free signature would let components be reordered and fields transposed). The fill must also match the position's market and direction, and each fill can back at most one position. Live: vault position #10 bound to Hyperliquid oid `55912729349` in tx [`0xb80330ba…674d7d`](https://coston2-explorer.flare.network/tx/0xb80330ba62544314a7f3d50ff22d0798258fecb56fcabf6d25a5b91a0e674d7d). What's proven: the order id the vault recorded exists in the executor account's real fill history with the right market and side; price/size are recorded in the event but not equivalence-checked (entries are FTSO-banded marks, testnet exchange prices legitimately drift).
 - Standalone fill attestation (`attestFill`, latest fill, replay-guarded by order id): tx [`0xe6a22c2f…8878cd`](https://coston2-explorer.flare.network/tx/0xe6a22c2fe1618adcc50bd745e37c284e336045316a7ca8deaa59b3f2758878cd).
-- **An enclave-executed fill, attested (Jul 22 2026):** the TEE-held key placed and closed a real Hyperliquid testnet order *from inside the enclave*, and FDC verified that exact fill on-chain: tx [`0xe2798ac7…57c01`](https://coston2-explorer.flare.network/tx/0xe2798ac7031802b535ec2a52f844a2c811021b496151ba21405ece9dc3257c01). The whole trust chain — sealed key, real orderbook, validator proof — has run as one loop.
-- Anyone can reproduce either: `npm run fdc:attest -w contracts` (latest fill) or `POSITION_ID=10 npm run fdc:attest -w contracts` (position-bound). The flow: prepare the request at the FDC verifier, submit to `FdcHub`, wait the voting round (~2-3 min), pull the Merkle proof from the DA layer, then the consumer verifies it through `ContractRegistry.getFdcVerification()`.
-- Kept out of the `confirmFill` hot path on purpose: a round trip is ~2 min plus a fee, so requiring an inline proof on every fill would stall the live loop. Attestation is the settlement-verification path — any fill backed by a real exchange order id can be proven after the fact, by anyone, without trusting us. (Mock-mode fills carry internal sequence ids and are not attestable; the FDC path applies to exchange-routed fills.)
+- **An enclave-executed fill, attested (Jul 22 2026):** a TDX CVM running this executor's exchange adapter placed and closed a real Hyperliquid testnet order *from inside the enclave*, and FDC verified that exact fill on-chain: tx [`0xe2798ac7…57c01`](https://coston2-explorer.flare.network/tx/0xe2798ac7031802b535ec2a52f844a2c811021b496151ba21405ece9dc3257c01). In-enclave execution, real orderbook, validator proof — the loop has run end to end. (Precisely: the Hyperliquid API key is operator-provisioned; the key no one has ever seen is the executor key that signs `confirmFill`.)
+- The flow is scripted and permissionless: `npm run fdc:attest -w contracts` (latest fill) or `POSITION_ID=<id> npm run fdc:attest -w contracts` (position-bound) — prepare the request at the FDC verifier, submit to `FdcHub`, wait the voting round (~2-3 min), pull the Merkle proof from the DA layer, then the consumer verifies it through `ContractRegistry.getFdcVerification()`. One honest note: the fills above are already attested and the consumer is replay-guarded, so re-running those exact targets reverts with "already attested" — a from-scratch run needs a fresh exchange fill.
+- Kept out of the `confirmFill` hot path on purpose: a round trip is ~2 min plus a fee, so requiring an inline proof on every fill would stall the live loop. Attestation is the after-the-fact audit path — any fill backed by a real exchange order id can be proven later, by anyone, without trusting us. The vault does not read the consumer yet: settlement still rides on executor-reported prices banded by FTSO, and wiring proofs into settlement is roadmap. (Mock-mode fills carry internal sequence ids and are not attestable; the FDC path applies to exchange-routed fills.)
 
 **Flare Smart Accounts (Jul 29 2026): margin funded from a bare XRPL wallet.**
 
@@ -187,7 +199,9 @@ Set `EXECUTION_MODE=testnet` in `agent/.env`. Prerequisites, in order:
 
 The adapter uses the community SDK `@nktkas/hyperliquid` (verified against 0.15.4: `WalletClient`, `HttpTransport({ url: { api } })`, viem account as signer). Reads go through the public `/info` endpoint.
 
-The adapter has been proven against the live testnet: real BTC and ETH fills placed and closed through this code path (20 fills on the demo account — the two most recent executed *from inside the TDX enclave*), with per-asset lot rounding and the $10 minimum-notional guard exercised. Two of those fills are FDC-attested on-chain (see the Coston2 section above).
+The adapter has been proven against the live testnet: real BTC fills placed and closed through this code path (20 fills on the demo account `0xfDb941fe97e13B599BC576c4142128aB97D01622` — check it yourself with a `userFills` query against the public `/info` endpoint; the two most recent were executed *from inside the TDX enclave*), with per-asset lot rounding and the $10 minimum-notional guard exercised. Two of those fills are FDC-attested on-chain (see the Coston2 section above).
+
+One honest gap: Hyperliquid testnet does not list XRP. In testnet mode BTC, ETH and other venue-listed markets route to the real book; XRP — the flagship market — fills at the FTSO mark with `oid 0` (see the fallback in `agent/src/exchange.ts`), so XRP fills cannot be FDC-attested until a venue lists the pair. The web app's Honesty card states the same.
 
 ## Assumptions, flagged then verified
 
@@ -203,7 +217,7 @@ Every launch assumption was written down before deploying and checked live. Stat
 
 ## Security notes
 
-Not audited. Testnet software. The vault re-verifies liquidation conditions on-chain, bounds every executor price with FTSOv2, floors payouts at zero, and caps profit payouts at the insurance fund balance. Known open items for production: funding rates, partial closes, multi-executor quorum, withdrawal timelocks, and the FDC attestation path.
+Not audited. Testnet software. The vault re-verifies liquidation conditions on-chain, bounds every executor price with FTSOv2, floors payouts at zero, and caps profit payouts at the insurance fund balance. Known open items for production: funding rates, partial closes, multi-executor quorum, withdrawal timelocks, and FDC-gated settlement (attestation itself is proven; wiring it into settlement is the open item).
 
 ## License
 
