@@ -618,3 +618,60 @@ html, body { overflow-x: hidden; max-width: 100%; }
   margin-top: 7px; flex: none;
 }
 .modeline.on .modedot { background: var(--long); }
+
+/* ---------------------------------------------------------------- mobile fixes
+   Found by auditing a real 390px viewport rather than by eye:
+   1. the connect menu rendered at left:-80px (80px of it off-screen) because it
+      anchors to the button's right edge, and on mobile the header wraps that
+      button to the far left;
+   2. every text input was under 16px, which makes iOS Safari zoom the page on
+      focus and strand the user at 2x with no obvious way back;
+   3. 26 tap targets were under 44px, several as small as 21px.            */
+@media (max-width: 640px) {
+  /* A dropdown anchored to a button that can sit anywhere will always be able
+     to run off an edge. Pin it to the viewport as a bottom sheet instead: it
+     cannot be clipped, it is closer to the thumb, and it has room for the
+     XRPL address field. */
+  .wallet-menu {
+    position: fixed;
+    left: 10px;
+    right: 10px;
+    top: auto;
+    bottom: 10px;
+    min-width: 0;
+    padding: 8px;
+    border-radius: 16px;
+  }
+  /* dim the page so the sheet reads as modal rather than as a floating scrap */
+  .wallet-backdrop { background: rgba(0, 0, 0, 0.55); }
+  .wallet-menu button { padding: 13px 12px; font-size: 14px; }
+  .wallet-menu button span { font-size: 12px; }
+  .wallet-xrpl { min-width: 0; padding: 6px; }
+
+  /* The header wrapped to leave the connect button alone on its own row,
+     which wasted a whole band of a small screen. Drop the nav to its own
+     full-width row instead and let the spacer push connect up beside the
+     wordmark, where it is also easier to reach. */
+  .header { gap: 10px 12px; padding-bottom: 10px; }
+  .mainnav { order: 3; width: 100%; margin-left: 0; gap: 4px; }
+  .mainnav a { padding: 8px 10px 9px; }
+}
+
+@media (max-width: 980px) {
+  /* iOS zooms the viewport when a focused input is under 16px. Every one of
+     ours was, so tapping the margin field zoomed the terminal. */
+  .field input[type="text"],
+  .inline-amount input,
+  .wallet-xrpl input {
+    font-size: 16px;
+  }
+
+  /* Tap targets. Primary actions get the full 44px; the chart's chips and
+     market tabs get a smaller floor, because inflating a horizontal strip of
+     twelve controls to 44px each costs more layout than it wins in accuracy. */
+  .btn { min-height: 44px; }
+  .btn.sm { min-height: 36px; }
+  .markettabs button { min-height: 38px; }
+  .ctl { min-height: 32px; padding: 6px 10px; }
+  .table td button { min-height: 36px; }
+}
