@@ -49,6 +49,13 @@ export default function Honesty() {
           settles exactly like an attested one.
         </li>
         <li>
+          <b>Exchange routing will not cover every market.</b> Hyperliquid's testnet does not
+          list XRP: even when the exchange leg is on, XRP fills settle at the FTSO mark with no
+          exchange order id — unhedged, and with nothing for FDC to attest. Only fills on
+          venue-listed markets (BTC, ETH and others) carry a real order id and can earn an
+          on-chain receipt.
+        </li>
+        <li>
           <b>The executor still has bounded discretion.</b> It cannot invent a price: every
           settlement must sit within 1.5% of the oracle, and as of the v2 vault it may never be
           worse for you than the oracle itself. Within that, it chooses. It can also stall: if the

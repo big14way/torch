@@ -7,7 +7,11 @@
 # `EXECUTOR_NEW=0x... npm run set:executor -w contracts` to authorize it.
 services:
   executor:
-    image: ghcr.io/big14way/torch-executor:latest
+    # Pinned by digest so the TDX attestation binds this exact image, not a
+    # mutable tag (Phala nodes also cache :latest). This is the Aug 3 hardened
+    # build. After any intentional agent change: wait for CI, fetch the new
+    # digest (anonymous GHCR token flow), update this line, redeploy.
+    image: ghcr.io/big14way/torch-executor@sha256:171f9aa225e934ddc43469b41f03cc67a19953aebfdf48198ae93ab8251989fd
     restart: unless-stopped
     ports:
       - "80:3000"

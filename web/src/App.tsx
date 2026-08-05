@@ -83,8 +83,8 @@ export default function App() {
               Check it <span className="ph-grad">yourself.</span>
             </h2>
             <p className="ph-sub">
-              Every settlement price is bounded on-chain against Flare's oracle, and must not be
-              worse for you than the oracle itself. The signing key was generated inside attested
+              Every settlement price is bounded on-chain against Flare's oracle, and, as of the
+              v2 vault, must not be worse for you than the oracle itself. The signing key was generated inside attested
               hardware and can settle trades but never withdraw. Flare's validators can re-prove an
               exchange fill on-chain after the fact. Here is where you check each of those, and
               where we say plainly what is not yet proven.

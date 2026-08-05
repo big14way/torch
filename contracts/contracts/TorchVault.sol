@@ -22,8 +22,9 @@ import {IPriceReader} from "./interfaces/IPriceReader.sol";
 ///    so the executor cannot invent prices.
 ///  - The Hyperliquid API wallet held in the TEE has no withdrawal permission
 ///    on Hyperliquid, so even a compromised agent key cannot move funds.
-///  - Positive PnL is paid from an explicit insurance fund on this contract
-///    (in production it is replenished from the hedged Hyperliquid PnL).
+///  - Positive PnL is paid from an explicit insurance fund on this contract.
+///    Today it is funded manually via fundInsurance; replenishing it from the
+///    hedged Hyperliquid PnL is the target design, not yet wired.
 ///    Negative PnL accrues to the insurance fund.
 /// Roadmap: FDC Web2Json attestation of Hyperliquid fills replaces bare
 /// executor reports; FCC Protocol Managed Wallets replace the app-run TEE.
