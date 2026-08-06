@@ -162,6 +162,28 @@ async function main() {
     })) as bigint;
   };
 
+  // The v2 vault rejects any reported price worse for the user than the
+  // oracle, and a real venue legitimately fills a few bps away from FTSO.
+  // Report the user-favorable side of (fill, mark) and let the hedge book
+  // carry the basis — the documented operator risk. userPays: long entry /
+  // short exit (clamp down to the mark); otherwise the user receives
+  // (clamp up). Mock and FTSO-fallback fills return the mark, so this is
+  // a no-op for them.
+  const clampToOracle = async (
+    marketKey: string,
+    id: bigint,
+    price6: bigint,
+    userPays: boolean
+  ): Promise<bigint> => {
+    const mark = await markPrice6(marketKey);
+    const clamped = userPays ? (price6 < mark ? price6 : mark) : (price6 > mark ? price6 : mark);
+    if (clamped !== price6) {
+      const bps = ((price6 > mark ? price6 - mark : mark - price6) * 10_000n) / mark;
+      log(id, `basis absorbed: reporting ${fmt6(clamped)} (oracle) vs venue fill ${fmt6(price6)} — ${bps} bps carried by the hedge book`);
+    }
+    return clamped;
+  };
+
   let exchange: Exchange;
   if (MODE === "testnet") {
     // Builder code: Torch's revenue rail on routed Hyperliquid flow. The venue
@@ -346,11 +368,12 @@ async function main() {
             // (found live: the first v2 canary parked on this).
             const cloid = ("0x" + (BigInt(p.id) + 1n).toString(16).padStart(32, "0")) as string;
             const fill = await exchange.open(key, p.isLong, p.sizeUsd6, cloid);
+            const reportedEntry6 = await clampToOracle(key, p.id, fill.price6, p.isLong);
             try {
               const hash = await wallet.writeContract({
                 ...vault,
                 functionName: "confirmFill",
-                args: [p.id, fill.price6, fill.oid],
+                args: [p.id, reportedEntry6, fill.oid],
                 gas: TX_GAS,
                 chain: null,
               });
@@ -396,10 +419,11 @@ async function main() {
           inFlight.add(idStr);
           try {
             const fill = await exchange.close(key, p.isLong, p.sizeUsd6);
+            const reportedExit6 = await clampToOracle(key, p.id, fill.price6, !p.isLong);
             const hash = await wallet.writeContract({
               ...vault,
               functionName: "confirmClose",
-              args: [p.id, fill.price6],
+              args: [p.id, reportedExit6],
               gas: TX_GAS,
               chain: null,
             });
