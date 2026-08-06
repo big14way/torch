@@ -4,5 +4,10 @@
   "vault": "0x8d9A6a11BcC64CC36e54b22ACa68865d759fa6Bd",
   "attestTx": "0x95764f39d8768a7f037ec794eb3a1776f66b33969c4b8f65affc339ebf03c243",
   "attestedOid": "57497813763",
-  "attestedCoin": "BTC"
+  "attestedCoin": "BTC",
+  "positionAttest": {
+    "positionId": "1",
+    "oid": "57497722789",
+    "tx": "0xfbc0bb4feae778216e4bca7d3907e9845718959a94e79696f2671ee06fb19459"
+  }
 }
