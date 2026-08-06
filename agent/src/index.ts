@@ -341,7 +341,10 @@ async function main() {
             // Deterministic per position, so a restart mid-order finds the
             // existing fill instead of placing a second one. HL wants a
             // 16-byte hex cloid; the vault id is unique and never reused.
-            const cloid = ("0x" + p.id.toString(16).padStart(32, "0")) as string;
+            // id+1 because Hyperliquid rejects the all-zero cloid, which is
+            // exactly what position id 0 on a fresh vault would produce
+            // (found live: the first v2 canary parked on this).
+            const cloid = ("0x" + (BigInt(p.id) + 1n).toString(16).padStart(32, "0")) as string;
             const fill = await exchange.open(key, p.isLong, p.sizeUsd6, cloid);
             try {
               const hash = await wallet.writeContract({
