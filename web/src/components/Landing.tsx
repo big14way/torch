@@ -123,8 +123,8 @@ export default function Landing() {
 
       <div className="ld-close">
         <span>
-          Season 2 of the Paper Perps League runs to Aug 5. Top 10 paid. The only thing at risk is
-          your ego.
+          Two seasons of the Paper Perps League are in the books — 28 wallets, 221 positions,
+          all on-chain. Trade the v2 arena now; Season 3 is taking shape.
         </span>
         <button className="btn primary" onClick={scrollToApp}>
           Open the terminal

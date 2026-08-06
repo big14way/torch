@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useAccount, useReadContract, useReadContracts } from "wagmi";
-import { keepPreviousData } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { hexToString } from "viem";
 import { VAULT, DEPLOY, ENCLAVE_STATUS_URL, type Position } from "./config";
 import { useWatch } from "./watch";
@@ -236,6 +236,37 @@ export function useAllPositions(): { positions: Position[]; loading: boolean } {
 }
 
 /** Protocol-wide live numbers: insurance fund, open interest, notional routed. */
+/** Positions whose winning payout was clamped at the insurance fund's balance
+ * (the vault stores uncapped PnL; PayoutCapped carries what was actually
+ * paid). Rare by design, so one explorer-API log fetch covers all of them —
+ * the public RPC caps eth_getLogs at 30 blocks, the explorer does not. Fails
+ * soft: no data means no badges, never a broken table. */
+const PAYOUT_CAPPED_TOPIC =
+  "0xdb0e08f12e3dcb1c7063de252682dbda82c3634ce75d6ae1d6641cc4e317eea6";
+export function usePayoutCaps(): Map<string, { full: bigint; paid: bigint }> {
+  const { data } = useQuery({
+    queryKey: ["payout-caps", DEPLOY.vault],
+    queryFn: async () => {
+      const url = `https://coston2-explorer.flare.network/api?module=logs&action=getLogs&fromBlock=0&toBlock=latest&address=${DEPLOY.vault}&topic0=${PAYOUT_CAPPED_TOPIC}`;
+      const res = await fetch(url);
+      const json = (await res.json()) as { result?: { topics: string[]; data: string }[] };
+      if (!Array.isArray(json.result)) return [];
+      return json.result.map((l) => ({
+        id: BigInt(l.topics[1]).toString(),
+        full: BigInt("0x" + l.data.slice(2, 66)),
+        paid: BigInt("0x" + l.data.slice(66, 130)),
+      }));
+    },
+    refetchInterval: 30_000,
+    placeholderData: keepPreviousData,
+  });
+  return useMemo(() => {
+    const m = new Map<string, { full: bigint; paid: bigint }>();
+    for (const e of data ?? []) m.set(e.id, { full: e.full, paid: e.paid });
+    return m;
+  }, [data]);
+}
+
 export function useGlobalStats() {
   const { data: insurance } = useReadContract({
     ...VAULT,

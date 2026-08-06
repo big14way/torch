@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { usePublicClient, useWriteContract } from "wagmi";
+import { usePublicClient, useReadContract, useWriteContract } from "wagmi";
 import { parseUnits } from "viem";
 import { DEPLOY, VAULT } from "../lib/config";
 import {
@@ -56,6 +56,23 @@ export default function Ticket({ marketKey, mark }: { marketKey: string; mark: b
 
   const insufficient = free !== undefined && marginWei > free;
   const belowMin = est.sizeUsd > 0 && est.sizeUsd < MIN_NOTIONAL_USD;
+  // Winners are paid only from the on-chain insurance fund (disclosed on
+  // /verify). Say so BEFORE the trade when this size could plausibly out-win
+  // the fund (~3% favorable move), instead of surprising a capped winner.
+  // Raw read, not useGlobalStats: that hook coalesces to 0n, which would
+  // flash a false "capped above ~$0" warning while the read is loading.
+  const { data: insuranceRaw } = useReadContract({
+    ...VAULT,
+    functionName: "insuranceFund",
+    query: { refetchInterval: 30_000 },
+  });
+  const insurance = insuranceRaw as bigint | undefined;
+  const insuranceUsd =
+    insurance !== undefined && xrpPx
+      ? (Number(insurance) / 1e6) * (Number(xrpPx) / 1e6)
+      : undefined;
+  const capLikely =
+    insuranceUsd !== undefined && est.sizeUsd > 0 && est.sizeUsd * 0.03 > insuranceUsd;
   // Connected but nothing deposited yet: the #1 reason a first-time user can't
   // trade. Positions draw on *deposited* margin, not the wallet balance.
   const needsDeposit = isConnected && free !== undefined && free === 0n;
@@ -172,8 +189,23 @@ export default function Ticket({ marketKey, mark }: { marketKey: string; mark: b
         </div>
         <div className="row">
           <span>Route</span>
-          <b>{routesToExchange ? "Flare vault, TEE, Hyperliquid" : "Flare vault, TEE, FTSO mark"}</b>
+          <b>
+            {routesToExchange && marketKey !== "XRP"
+              ? "Flare vault, TEE, Hyperliquid"
+              : routesToExchange
+                ? "Flare vault, TEE, FTSO mark (XRP not venue-listed)"
+                : "Flare vault, TEE, FTSO mark"}
+          </b>
         </div>
+        {capLikely && (
+          <div className="row" style={{ color: "#ffc24b" }} title="Winners are paid from the on-chain insurance fund and payouts are capped at its balance — stated on /verify. At this size a normal favorable move could out-win the fund.">
+            <span>Payout cap</span>
+            <b>
+              wins above ~${insuranceUsd!.toLocaleString("en-US", { maximumFractionDigits: 0 })}{" "}
+              settle capped (fund {insurance !== undefined ? fmtFxrp(insurance) : "…"} FXRP)
+            </b>
+          </div>
+        )}
       </div>
 
       <div style={{ marginTop: 14 }}>

@@ -60,11 +60,12 @@ export default function App() {
           <div className="pagehero">
             <div className="ph-eyebrow">Paper Perps League</div>
             <h2 className="ph-title">
-              Season 2 <span className="ph-grad">is live.</span>
+              Season 2 <span className="ph-grad">is complete.</span>
             </h2>
             <p className="ph-sub">
-              Jul 22 – Aug 5 · $150 in FXRP · top 10 paid. Free testnet trading, ranked by
-              realized PnL. The only thing at risk is your ego.
+              Jul 22 – Aug 5 · $150 in FXRP · top 10 paid. Two seasons, 28 wallets, 221 positions
+              on the retired v1 vault — every one on-chain. The v2 arena is open for free trading
+              while Season 3 takes shape.
             </p>
             <div className="ph-actions">
               <Link to="/trade" className="btn primary">Enter the arena</Link>

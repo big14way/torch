@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { keepPreviousData } from "@tanstack/react-query";
+import { parseUnits } from "viem";
 import { useReadContracts, usePublicClient, useWriteContract } from "wagmi";
 import { DEPLOY, STATUS, VAULT, type Position } from "../lib/config";
 import {
@@ -12,6 +12,7 @@ import {
   marketName,
   MAINTENANCE_FRACTION,
   useEffectiveAccount,
+  usePayoutCaps,
   useXrpPrice,
   waitTx,
 } from "../lib/hooks";
@@ -69,6 +70,7 @@ function fmtDur(totalSec: number): string {
 export default function Positions({ positions }: { positions: Position[] | undefined }) {
   const marks = useAllMarks();
   const { data: xrpPx } = useXrpPrice();
+  const caps = usePayoutCaps();
   const { writeContractAsync, isPending } = useWriteContract();
   const publicClient = usePublicClient();
   const { isConnected } = useEffectiveAccount();
@@ -79,39 +81,110 @@ export default function Positions({ positions }: { positions: Position[] | undef
   // All values normalized to Number at decode time — closeRequestedAt is a
   // uint40 (viem decodes it as number) while selfCloseDelay is a uint64
   // (bigint); mixing them throws. Seconds fit far below 2^53.
-  // Last-good merge + keepPreviousData: individual calls inside the batch can
-  // fail under the rate-limited public RPC (same mode useAllPositions guards
-  // against), and this button must not blank for the user it exists to rescue.
+  // Last-good merge: individual calls inside the batch can fail under the
+  // rate-limited public RPC (same mode useAllPositions guards against), and
+  // these buttons must not blank for the user they exist to rescue.
   const closingIds = (positions ?? []).filter((p) => p.status === 3).map((p) => p.id);
+  const requestedIds = (positions ?? []).filter((p) => p.status === 1).map((p) => p.id);
+  const openIds = (positions ?? []).filter((p) => p.status === 2).map((p) => p.id);
   const { data: closeMeta } = useReadContracts({
     contracts: [
       { ...VAULT, functionName: "selfCloseDelay" },
+      { ...VAULT, functionName: "acceptTimeout" },
       ...closingIds.map((id) => ({ ...VAULT, functionName: "closeRequestedAt", args: [id] })),
+      ...requestedIds.map((id) => ({ ...VAULT, functionName: "fillAcceptedAt", args: [id] })),
+      ...openIds.map((id) => ({ ...VAULT, functionName: "triggers", args: [id] })),
     ],
     query: {
       refetchInterval: 10_000,
-      enabled: closingIds.length > 0,
-      placeholderData: keepPreviousData,
+      enabled: closingIds.length + requestedIds.length + openIds.length > 0,
+      // NO keepPreviousData here: the id lists are recomputed every render,
+      // and serving a previous key's results against fresh positional offsets
+      // misattributes slots (and once crashed on destructuring a scalar as
+      // the triggers tuple). While the new key loads, the lastGood ref below
+      // keeps the buttons from blanking — the safe half of the old behavior.
     },
   });
-  const lastGood = useRef<{ delay?: number; at: Record<string, number> }>({ at: {} });
-  if (closeMeta?.[0]?.status === "success") {
+  const lastGood = useRef<{
+    delay?: number;
+    acceptTimeout?: number;
+    at: Record<string, number>;
+    acceptedAt: Record<string, number>;
+    trig: Record<string, { stop: bigint; tp: bigint }>;
+  }>({ at: {}, acceptedAt: {}, trig: {} });
+  // Shape guards on every slot: a slot must be the type its region expects
+  // before it is consumed — the belt to the no-keepPreviousData suspenders.
+  const isScalar = (v: unknown): v is number | bigint =>
+    typeof v === "number" || typeof v === "bigint";
+  if (closeMeta?.[0]?.status === "success" && isScalar(closeMeta[0].result))
     lastGood.current.delay = Number(closeMeta[0].result);
-  }
+  if (closeMeta?.[1]?.status === "success" && isScalar(closeMeta[1].result))
+    lastGood.current.acceptTimeout = Number(closeMeta[1].result);
   closingIds.forEach((id, i) => {
-    if (closeMeta?.[i + 1]?.status === "success") {
-      lastGood.current.at[id.toString()] = Number(closeMeta[i + 1].result);
+    const r = closeMeta?.[i + 2];
+    if (r?.status === "success" && isScalar(r.result))
+      lastGood.current.at[id.toString()] = Number(r.result);
+  });
+  requestedIds.forEach((id, i) => {
+    const r = closeMeta?.[i + 2 + closingIds.length];
+    if (r?.status === "success" && isScalar(r.result))
+      lastGood.current.acceptedAt[id.toString()] = Number(r.result);
+  });
+  openIds.forEach((id, i) => {
+    const r = closeMeta?.[i + 2 + closingIds.length + requestedIds.length];
+    if (r?.status === "success" && Array.isArray(r.result) && r.result.length === 2) {
+      const [stop, tp] = r.result as unknown as readonly [bigint, bigint];
+      if (typeof stop === "bigint" && typeof tp === "bigint")
+        lastGood.current.trig[id.toString()] = { stop, tp };
     }
   });
   const selfCloseDelay = lastGood.current.delay;
+  const acceptTimeout = lastGood.current.acceptTimeout;
   const closeReqAt = lastGood.current.at;
+  const acceptedAt = lastGood.current.acceptedAt;
+  const trigOf = lastGood.current.trig;
   const [nowSec, setNowSec] = useState(() => Math.floor(Date.now() / 1000));
-  const hasClosing = closingIds.length > 0;
+  const needsTick = closingIds.length + requestedIds.length > 0;
   useEffect(() => {
-    if (!hasClosing) return;
+    if (!needsTick) return;
     const t = setInterval(() => setNowSec(Math.floor(Date.now() / 1000)), 10_000);
     return () => clearInterval(t);
-  }, [hasClosing]);
+  }, [needsTick]);
+
+  // SL/TP inline editor state (one open editor at a time).
+  const [trigFor, setTrigFor] = useState<string | null>(null);
+  const [stopStr, setStopStr] = useState("");
+  const [tpStr, setTpStr] = useState("");
+  // Values passed explicitly: reading stopStr/tpStr from the closure made
+  // "Clear" re-submit the prefilled old triggers (state updates don't land
+  // until the next render).
+  const saveTriggers = async (id: bigint, isLong: boolean, stopS: string, tpS: string) => {
+    setActErr(null);
+    try {
+      const stop6 = stopS ? parseUnits(stopS as `${number}`, 6) : 0n;
+      const tp6 = tpS ? parseUnits(tpS as `${number}`, 6) : 0n;
+      if (stop6 !== 0n && tp6 !== 0n && (isLong ? stop6 >= tp6 : stop6 <= tp6)) {
+        setActErr(
+          isLong
+            ? "For a long, the stop must sit below the take-profit."
+            : "For a short, the stop must sit above the take-profit."
+        );
+        return;
+      }
+      const hash = await writeContractAsync({
+        ...VAULT,
+        functionName: "setTriggers",
+        args: [id, stop6, tp6],
+      });
+      await waitTx(publicClient, hash);
+      setTrigFor(null);
+      setStopStr("");
+      setTpStr("");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setActErr(msg.includes("User rejected") ? "Rejected in wallet." : msg.split("\n")[0].slice(0, 140));
+    }
+  };
 
   const act = async (
     fn: "requestClose" | "cancelRequest" | "cancelCloseRequest" | "selfClose",
@@ -180,7 +253,21 @@ export default function Positions({ positions }: { positions: Position[] | undef
             return (
               <tr key={p.id.toString()}>
                 <td>{p.id.toString()}</td>
-                <td>{key}-PERP</td>
+                <td>
+                  {key}-PERP
+                  {p.entryPrice6 > 0n && (
+                    <span
+                      style={{ marginLeft: 5, fontSize: 10, opacity: 0.65 }}
+                      title={
+                        p.hlOid > 0n
+                          ? `Venue-routed: real Hyperliquid order #${p.hlOid} — FDC-attestable`
+                          : "Filled at the FTSO oracle mark (no venue lists this market on testnet) — nothing to attest"
+                      }
+                    >
+                      {p.hlOid > 0n ? "HL" : "FTSO"}
+                    </span>
+                  )}
+                </td>
                 <td className={p.isLong ? "side-long" : "side-short"}>{p.isLong ? "LONG" : "SHORT"}</td>
                 <td>${fmtUsd6(p.sizeUsd6)}</td>
                 <td>{fmtFxrp(p.marginFxrp)} FXRP</td>
@@ -224,11 +311,22 @@ export default function Positions({ positions }: { positions: Position[] | undef
                       // display a bigger loss than the user could actually take
                       // (and disagree with the leaderboard, which clamps).
                       const shown = p.pnlFxrp < -p.marginFxrp ? -p.marginFxrp : p.pnlFxrp;
+                      const cap = caps.get(p.id.toString());
                       return (
-                        <span className={shown >= 0n ? "pnl-pos" : "pnl-neg"}>
-                          {shown >= 0n ? "+" : ""}
-                          {fmtFxrp(shown)} FXRP
-                        </span>
+                        <>
+                          <span className={shown >= 0n ? "pnl-pos" : "pnl-neg"}>
+                            {shown >= 0n ? "+" : ""}
+                            {fmtFxrp(shown)} FXRP
+                          </span>
+                          {cap && (
+                            <div
+                              style={{ fontSize: 10, opacity: 0.8, color: "#ffc24b" }}
+                              title="The insurance fund could not cover the full win at settlement; the vault pays winners only from that fund and says so up front on /verify."
+                            >
+                              paid {fmtFxrp(cap.paid)} — capped by insurance fund
+                            </div>
+                          )}
+                        </>
                       );
                     })()
                   ) : live !== null ? (
@@ -241,19 +339,112 @@ export default function Positions({ positions }: { positions: Position[] | undef
                   )}
                 </td>
                 <td>
-                  <span className={`chip ${status}`}>{status}</span>
+                  <span
+                    className={`chip ${status}`}
+                    title={
+                      closing
+                        ? "Still marked to market: a closing position can be liquidated until it settles."
+                        : undefined
+                    }
+                  >
+                    {status}
+                  </span>
+                  {closing && (
+                    <div style={{ fontSize: 10, opacity: 0.7 }}>still liquidatable</div>
+                  )}
                 </td>
                 <td>
-                  {open && (
-                    <button className="btn sm ghost" disabled={isPending || !isConnected} onClick={() => act("requestClose", p.id)}>
-                      Close
-                    </button>
-                  )}
-                  {requested && (
-                    <button className="btn sm ghost" disabled={isPending || !isConnected} onClick={() => act("cancelRequest", p.id)}>
-                      Cancel
-                    </button>
-                  )}
+                  {open &&
+                    (() => {
+                      const t = trigOf[p.id.toString()];
+                      const hasTrig = t && (t.stop !== 0n || t.tp !== 0n);
+                      const editing = trigFor === p.id.toString();
+                      return (
+                        <>
+                          <button className="btn sm ghost" disabled={isPending || !isConnected} onClick={() => act("requestClose", p.id)}>
+                            Close
+                          </button>
+                          <button
+                            className="btn sm ghost"
+                            disabled={!isConnected}
+                            title="Set a stop-loss / take-profit. The contract re-reads the FTSO feed and only settles when the trigger genuinely crossed."
+                            onClick={() => {
+                              if (editing) {
+                                setTrigFor(null);
+                              } else {
+                                setTrigFor(p.id.toString());
+                                // plain digits: fmtPx's locale separators would
+                                // break parseUnits on the way back in
+                                setStopStr(t && t.stop !== 0n ? (Number(t.stop) / 1e6).toString() : "");
+                                setTpStr(t && t.tp !== 0n ? (Number(t.tp) / 1e6).toString() : "");
+                              }
+                            }}
+                          >
+                            SL/TP
+                          </button>
+                          {hasTrig && !editing && (
+                            <div style={{ fontSize: 10, opacity: 0.75 }}>
+                              {t.stop !== 0n ? `SL $${fmtPx(t.stop)}` : ""}
+                              {t.stop !== 0n && t.tp !== 0n ? " · " : ""}
+                              {t.tp !== 0n ? `TP $${fmtPx(t.tp)}` : ""}
+                            </div>
+                          )}
+                          {editing && (
+                            <div style={{ display: "flex", gap: 4, marginTop: 4, flexWrap: "wrap" }}>
+                              <input
+                                style={{ width: 74 }}
+                                placeholder="stop $"
+                                value={stopStr}
+                                onChange={(e) => setStopStr(e.target.value)}
+                              />
+                              <input
+                                style={{ width: 74 }}
+                                placeholder="take $"
+                                value={tpStr}
+                                onChange={(e) => setTpStr(e.target.value)}
+                              />
+                              <button className="btn sm" disabled={isPending} onClick={() => saveTriggers(p.id, p.isLong, stopStr, tpStr)}>
+                                Set
+                              </button>
+                              {hasTrig && (
+                                <button
+                                  className="btn sm ghost"
+                                  disabled={isPending}
+                                  onClick={() => {
+                                    setStopStr("");
+                                    setTpStr("");
+                                    void saveTriggers(p.id, p.isLong, "", "");
+                                  }}
+                                >
+                                  Clear
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
+                  {requested &&
+                    (() => {
+                      const acc = acceptedAt[p.id.toString()];
+                      const lockedUntil =
+                        acc && acc > 0 && acceptTimeout !== undefined ? acc + acceptTimeout : undefined;
+                      const locked = lockedUntil !== undefined && nowSec < lockedUntil;
+                      return (
+                        <button
+                          className="btn sm ghost"
+                          disabled={isPending || !isConnected || locked}
+                          title={
+                            locked
+                              ? "The executor accepted this fill and may already be hedging it; cancel unlocks when the accept window lapses."
+                              : "Withdraw the request before it fills. Free."
+                          }
+                          onClick={() => act("cancelRequest", p.id)}
+                        >
+                          {locked ? `Cancel in ${fmtDur(lockedUntil! - nowSec)}` : "Cancel"}
+                        </button>
+                      );
+                    })()}
                   {closing &&
                     (() => {
                       const at = closeReqAt[p.id.toString()];

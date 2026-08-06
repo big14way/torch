@@ -3,6 +3,7 @@ import {
   createPublicClient,
   createWalletClient,
   http,
+  nonceManager,
   type Abi,
   type Address,
   hexToString,
@@ -12,6 +13,7 @@ import deployments from "./generated/deployments.json" with { type: "json" };
 import vaultAbiJson from "./generated/TorchVault.abi.json" with { type: "json" };
 import oracleAbiJson from "./generated/MockFtsoV2.abi.json" with { type: "json" };
 import { MockExchange, HyperliquidTestnet, type Exchange } from "./exchange.js";
+import { startAttester } from "./attest.js";
 import { getAttestation, inEnclave } from "./tee.js";
 import { createServer as createHttpServer } from "node:http";
 
@@ -56,7 +58,10 @@ type Position = {
 };
 
 async function main() {
-  const account = privateKeyToAccount(KEY);
+  // nonceManager: the settlement loop and the FDC attester write from the
+  // same key concurrently; without a shared nonce source their per-call
+  // pending-nonce fetches can collide and drop a confirm mid-fill.
+  const account = privateKeyToAccount(KEY, { nonceManager });
   const pub = createPublicClient({ transport: http(RPC_URL) });
   const wallet = createWalletClient({ account, transport: http(RPC_URL) });
   const chainId = await pub.getChainId();
@@ -89,12 +94,20 @@ async function main() {
     liqFailures: 0,        // liquidation attempts that failed for a REAL reason
     lastLiqFailure: "",
     givenUp: [] as string[], // positions parked after repeated fill failures
+    triggersExecuted: 0,   // SL/TP settlements fired by the keeper
   };
   // Per-position fill-failure counts. Without this a band revert (routine on an
   // illiquid testnet book) re-places a real exchange order every 3s forever,
   // burning taker fees on both legs with no backoff and no give-up state.
   const fillFailures = new Map<string, number>();
   const MAX_FILL_ATTEMPTS = 5;
+  // Venue-hedged positions whose hedge this process has already unwound —
+  // guards against double-unwinds and lets the finalized-branch sweep catch
+  // settlements whose unwind was missed (e.g. a late-mined trigger tx).
+  const unwound = new Set<string>();
+  // FDC auto-attester: assigned after the exchange is constructed; declared
+  // here so the status server's closure can report its stats.
+  let attester: ReturnType<typeof startAttester> | null = null;
   // HL egress spike results (HL_SMOKE=1 runs a one-shot exchange round trip
   // instead of the vault loop; see the gate below runLoop's definition).
   let smokeResult: Record<string, unknown> | undefined;
@@ -118,7 +131,13 @@ async function main() {
               vault: deployments.vault,
               executor: account.address,
               executionMode: MODE,
-              tee: { mode: att.mode, imageDigest: att.imageDigest ?? null },
+              // IMAGE_DIGEST comes from docker-compose (whose hash the TDX
+              // report binds), set to the same digest the compose pins — so
+              // the endpoint states which exact image the attestation covers.
+              tee: {
+                mode: att.mode,
+                imageDigest: att.imageDigest ?? process.env.IMAGE_DIGEST ?? null,
+              },
               loop: {
                 lastTick: health.lastLoopAt ? new Date(health.lastLoopAt).toISOString() : null,
                 ageSec,
@@ -131,6 +150,8 @@ async function main() {
                 lastLiquidationError: health.lastLiqFailure || null,
                 givenUpPositions: health.givenUp,
               },
+              triggers: { executed: health.triggersExecuted },
+              attest: attester ? { ...attester.stats, pending: attester.pending() } : null,
               ...(smokeResult ? { smoke: smokeResult } : {}),
             },
             null,
@@ -207,6 +228,45 @@ async function main() {
     console.log("  Mock execution: fills at the FTSO mark. Full local loop.");
   }
 
+  // FDC auto-attestation: every venue-routed fill gets validator-bound to its
+  // position, by the enclave itself. Needs the consumer address (compose env);
+  // silently off in mock/local where fills carry no exchange oid anyway.
+  const fdcConsumer = process.env.FDC_CONSUMER as `0x${string}` | undefined;
+  if (fdcConsumer && MODE === "testnet") {
+    attester = startAttester({
+      pub,
+      wallet,
+      account,
+      consumer: fdcConsumer,
+      verifierKey: process.env.VERIFIER_API_KEY_TESTNET || "00000000-0000-0000-0000-000000000000",
+      log,
+    });
+    console.log(`  FDC auto-attest ON -> consumer ${fdcConsumer.slice(0, 10)}…`);
+
+    // Reconciliation: the queue is memory-only, so a restart between a fill
+    // and its receipt landing would silently drop the attestation, and the
+    // confirm-landed-despite-error race never enqueues at all. On startup and
+    // hourly, enqueue every venue fill the consumer has no binding for — the
+    // worker's on-chain idempotence read plus queue dedupe make this safe.
+    const sweepAttestations = async () => {
+      try {
+        const n = (await pub.readContract({ ...vault, functionName: "positionsCount" })) as bigint;
+        for (let i = 0n; i < n; i++) {
+          const p = (await pub.readContract({
+            ...vault,
+            functionName: "getPosition",
+            args: [i],
+          })) as Position;
+          if (p.hlOid !== 0n && p.status !== S.Cancelled) attester!.enqueue(p.id, p.hlOid);
+        }
+      } catch (e) {
+        console.error("attest sweep failed:", (e as Error).message);
+      }
+    };
+    void sweepAttestations();
+    setInterval(() => void sweepAttestations(), 3_600_000);
+  }
+
   // ---- local price walker (mock oracle only) ------------------------------
   const walk = process.env.PRICE_WALK ?? "auto";
   const shouldWalk = walk === "true" || (walk === "auto" && MODE === "mock" && chainId === 31337);
@@ -276,7 +336,17 @@ async function main() {
    * receipt endpoint before declaring failure. */
   const waitMined = async (hash: `0x${string}`, id: bigint, expect: number[]): Promise<void> => {
     try {
-      await pub.waitForTransactionReceipt({ hash, timeout: 90_000, pollingInterval: 3_000 });
+      const receipt = await pub.waitForTransactionReceipt({
+        hash,
+        timeout: 90_000,
+        pollingInterval: 3_000,
+      });
+      // A mined-but-REVERTED tx resolves here too; treating it as success
+      // would (for example) unwind the live hedge of a still-open position.
+      if (receipt.status === "reverted") {
+        if (await confirmedOnChain(id, expect)) return; // another tx got us there
+        throw new Error(`tx ${hash.slice(0, 10)} reverted on-chain`);
+      }
     } catch (e) {
       if (await confirmedOnChain(id, expect)) {
         log(id, `receipt endpoint lagged but state confirmed on-chain (tx ${hash.slice(0, 10)})`);
@@ -360,13 +430,18 @@ async function main() {
               log(p.id, `acceptRequest failed, hedging unclaimed: ${(acceptErr as Error).message.slice(0, 80)}`);
             }
 
-            // Deterministic per position, so a restart mid-order finds the
-            // existing fill instead of placing a second one. HL wants a
-            // 16-byte hex cloid; the vault id is unique and never reused.
-            // id+1 because Hyperliquid rejects the all-zero cloid, which is
-            // exactly what position id 0 on a fresh vault would produce
-            // (found live: the first v2 canary parked on this).
-            const cloid = ("0x" + (BigInt(p.id) + 1n).toString(16).padStart(32, "0")) as string;
+            // Deterministic per position AND per attempt: a restart mid-order
+            // finds the existing fill instead of placing a second one, while a
+            // retry after a confirm-failure unwind gets a FRESH cloid — cloid
+            // recovery must never resurrect a fill whose hedge was already
+            // unwound. Low 12 bytes: id+1 (HL rejects the all-zero cloid,
+            // which id 0 on a fresh vault would produce — found live). High
+            // 4 bytes: the attempt count. Known edge: a restart between an
+            // unwind and its retry resets the count and can re-match the
+            // attempt-0 fill; bounded by MAX_FILL_ATTEMPTS and visible in logs.
+            const attempt = BigInt(fillFailures.get(idStr) ?? 0);
+            const cloid = ("0x" +
+              ((attempt << 96n) | (BigInt(p.id) + 1n)).toString(16).padStart(32, "0")) as string;
             const fill = await exchange.open(key, p.isLong, p.sizeUsd6, cloid);
             const reportedEntry6 = await clampToOracle(key, p.id, fill.price6, p.isLong);
             try {
@@ -380,6 +455,7 @@ async function main() {
               await waitMined(hash, p.id, [S.Open]); // hold the lock until it mines
               fillFailures.delete(idStr);
               log(p.id, `OPEN  ${key} ${p.isLong ? "long" : "short"} @ ${fmt6(fill.price6)} (${fill.venue ?? exchange.name}) tx ${hash.slice(0, 10)}`);
+              attester?.enqueue(p.id, fill.oid); // receipt path, off the hot path
             } catch (confirmErr) {
               // The exchange filled but the on-chain confirm failed (band
               // revert, gas, RPC). Before unwinding, trust the chain: if the
@@ -419,6 +495,7 @@ async function main() {
           inFlight.add(idStr);
           try {
             const fill = await exchange.close(key, p.isLong, p.sizeUsd6);
+            unwound.add(idStr); // the venue leg is flat from here on
             const reportedExit6 = await clampToOracle(key, p.id, fill.price6, !p.isLong);
             const hash = await wallet.writeContract({
               ...vault,
@@ -435,12 +512,67 @@ async function main() {
             inFlight.delete(idStr);
           }
         } else if (p.status === S.Open) {
+          const idStr = p.id.toString();
+          if (inFlight.has(idStr)) continue;
+
+          // SL/TP keeper — checked BEFORE liquidation on purpose: a crossed
+          // stop settles as a normal close (0.08% fee) and beats liquidating
+          // the same position at 1%. The contract re-reads FTSO and rejects an
+          // uncrossed trigger, so the worst a race can do is TriggerNotHit.
+          try {
+            const trig = (await pub.readContract({
+              ...vault,
+              functionName: "triggers",
+              args: [p.id],
+            })) as readonly [bigint, bigint];
+            const [stop6, tp6] = trig;
+            if (stop6 !== 0n || tp6 !== 0n) {
+              const mark = await markPrice6(key);
+              const stopHit = stop6 !== 0n && (p.isLong ? mark <= stop6 : mark >= stop6);
+              const tpHit = tp6 !== 0n && (p.isLong ? mark >= tp6 : mark <= tp6);
+              if (stopHit || tpHit) {
+                inFlight.add(idStr);
+                try {
+                  // Settle FIRST at the oracle mark (band-equal, never worse
+                  // for the user), unwind the hedge AFTER: a TriggerNotHit
+                  // race then leaves the hedge intact rather than the
+                  // position naked.
+                  const hash = await wallet.writeContract({
+                    ...vault,
+                    functionName: "executeTrigger",
+                    args: [p.id, mark],
+                    gas: TX_GAS,
+                    chain: null,
+                  });
+                  await waitMined(hash, p.id, [S.Closed]);
+                  health.triggersExecuted += 1;
+                  log(p.id, `TRIGGER ${stopHit ? "stop" : "take-profit"} ${key} @ ${fmt6(mark)} tx ${hash.slice(0, 10)}`);
+                  if (exchange.name !== "mock" && p.hlOid !== 0n && !unwound.has(idStr)) {
+                    try {
+                      await exchange.close(key, p.isLong, p.sizeUsd6);
+                      unwound.add(idStr);
+                      log(p.id, `hedge unwound after trigger`);
+                    } catch (unwindErr) {
+                      log(p.id, `TRIGGER HEDGE UNWIND FAILED, manual check: ${(unwindErr as Error).message.slice(0, 120)}`);
+                    }
+                  }
+                  continue; // settled — skip the liquidation check this cycle
+                } catch (e) {
+                  const msg = (e as Error).message ?? String(e);
+                  if (!/TriggerNotHit/.test(msg)) log(p.id, `trigger failed: ${msg.slice(0, 120)}`);
+                } finally {
+                  inFlight.delete(idStr);
+                }
+              }
+            }
+          } catch (e) {
+            log(p.id, `trigger read failed: ${(e as Error).message.slice(0, 80)}`);
+          }
+
           // Liquidation watch: replicate the contract check off-chain, then
           // let the contract re-verify on-chain. Same in-flight guard as
           // fills — without it, polls could double-fire liquidate before the
           // first tx mines.
-          const idStr = p.id.toString();
-          if (inFlight.has(idStr)) continue;
           try {
             const equity = (await pub.readContract({
               ...vault,
@@ -461,6 +593,17 @@ async function main() {
                 });
                 await waitMined(hash, p.id, [S.Liquidated]); // hold until mined
                 log(p.id, `LIQUIDATE ${key} @ ${fmt6(mark)} equity ${fmt6(equity)} tx ${hash.slice(0, 10)}`);
+                // A liquidated position's hedge no longer offsets anything:
+                // unwind it or the house book carries a naked leg.
+                if (exchange.name !== "mock" && p.hlOid !== 0n && !unwound.has(idStr)) {
+                  try {
+                    await exchange.close(key, p.isLong, p.sizeUsd6);
+                    unwound.add(idStr);
+                    log(p.id, `hedge unwound after liquidation`);
+                  } catch (unwindErr) {
+                    log(p.id, `LIQUIDATION HEDGE UNWIND FAILED, manual check: ${(unwindErr as Error).message.slice(0, 120)}`);
+                  }
+                }
               } finally {
                 inFlight.delete(idStr);
               }
@@ -477,6 +620,31 @@ async function main() {
             }
           }
         } else if (p.status === S.Closed || p.status === S.Liquidated || p.status === S.Cancelled) {
+          // Sweep for hedges this process never unwound: a settlement can mine
+          // AFTER waitMined gave up (Coston2 receipt lag), or via selfClose —
+          // either leaves the house book carrying a naked leg. One attempt,
+          // recorded either way so it never loops. In-memory only: a restart
+          // forgets, which the ops runbook accepts on testnet (logged loudly).
+          const idStr = p.id.toString();
+          // First loop after (re)start: everything already terminal is
+          // history — mark it unwound-elsewhere WITHOUT touching the book,
+          // or a restart would "sweep" every old position into a naked short.
+          if (health.loops === 0) unwound.add(idStr);
+          if (
+            exchange.name !== "mock" &&
+            p.status !== S.Cancelled &&
+            p.hlOid !== 0n &&
+            !unwound.has(idStr) &&
+            !finalized.has(i.toString())
+          ) {
+            unwound.add(idStr);
+            try {
+              await exchange.close(key, p.isLong, p.sizeUsd6);
+              log(p.id, `hedge unwound on finalize sweep`);
+            } catch (unwindErr) {
+              log(p.id, `FINALIZE HEDGE UNWIND FAILED, manual check: ${(unwindErr as Error).message.slice(0, 120)}`);
+            }
+          }
           finalized.add(i.toString()); // never re-read a terminal position
           seenClosed.add(p.id.toString());
         }

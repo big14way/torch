@@ -61,7 +61,9 @@ export default function Honesty() {
           worse for you than the oracle itself. Within that, it chooses. It can also stall: if the
           agent stops, a close you requested waits — but never indefinitely. You can retract a
           pending close for free at any time, and two hours after you asked — answered or not —
-          the Self-close button settles you at the live oracle price, no executor needed.
+          the Self-close button settles you at the live oracle price, no executor needed. One more
+          edge worth naming: a position with a pending close is still marked to market and can be
+          liquidated until it actually settles.
         </li>
         <li>
           <b>The owner key is a real trust assumption.</b> One address can repoint the oracle and
