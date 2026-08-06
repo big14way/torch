@@ -4,16 +4,25 @@ import * as path from "path";
 
 // FTSOv2 feed ids (bytes21): 0x01 crypto category + ASCII name + zero padding.
 // Verify the live list at https://dev.flare.network/ftso/feeds before mainnet.
+const feedId = (name: string) =>
+  "0x" + ("01" + Buffer.from(`${name}/USD`, "ascii").toString("hex")).padEnd(42, "0");
+
 const FEEDS: Record<string, string> = {
-  XRP: "0x015852502f55534400000000000000000000000000",
-  BTC: "0x014254432f55534400000000000000000000000000",
-  ETH: "0x014554482f55534400000000000000000000000000",
+  XRP: feedId("XRP"),
+  BTC: feedId("BTC"),
+  ETH: feedId("ETH"),
+  HYPE: feedId("HYPE"),
+  SOL: feedId("SOL"),
+  DOGE: feedId("DOGE"),
 };
 
 const START_PRICES_6DP: Record<string, bigint> = {
   XRP: 2_850_000n, // 2.85 USD
   BTC: 96_500_000_000n, // 96,500 USD
   ETH: 4_420_000_000n, // 4,420 USD
+  HYPE: 44_000_000n, // 44 USD
+  SOL: 160_000_000n, // 160 USD
+  DOGE: 220_000n, // 0.22 USD
 };
 
 function writeGenerated(payload: object, abiFiles: Record<string, unknown>) {
@@ -74,7 +83,7 @@ async function main() {
     console.log(`FtsoV2Reader: ${oracleAddress}`);
   }
 
-  const TorchVault = await ethers.getContractFactory("TorchVault");
+  const TorchVault = await ethers.getContractFactory("TorchVaultV2");
   const vault = await TorchVault.deploy(
     fxrpAddress,
     oracleAddress,
@@ -105,7 +114,8 @@ async function main() {
     console.log("Seeded deployer with tFXRP and funded 50,000 tFXRP insurance.");
   }
 
-  const vaultAbi = (await artifacts.readArtifact("TorchVault")).abi;
+  // v2 ABI, written under the stable TorchVault.abi.json name web/agent import.
+  const vaultAbi = (await artifacts.readArtifact("TorchVaultV2")).abi;
   const fxrpAbi = (await artifacts.readArtifact("MockFXRP")).abi; // ERC20 surface
   const oracleAbi = (await artifacts.readArtifact("MockFtsoV2")).abi;
 

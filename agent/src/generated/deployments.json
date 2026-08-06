@@ -2,9 +2,9 @@
   "chainId": 114,
   "network": "coston2",
   "mode": "coston2",
-  "vault": "0x7fC640Bd0e635a6AFc3B437e80f0DE192f6FA0BA",
+  "vault": "0x8d9A6a11BcC64CC36e54b22ACa68865d759fa6Bd",
   "fxrp": "0x0b6A3645c240605887a5532109323A3E12273dc7",
-  "oracle": "0xe98BEc67F44993c3a9f479500a23f26ca05BcFc5",
+  "oracle": "0xF8be9ca7bCb07B0e87BDcEAB28841fF6A16E7D01",
   "executor": "0x3C343AD077983371b29fee386bdBC8a92E934C51",
   "treasury": "0x3C343AD077983371b29fee386bdBC8a92E934C51",
   "markets": [
@@ -39,5 +39,5 @@
       "feedId": "0x01444f47452f555344000000000000000000000000"
     }
   ],
-  "deployedAt": "2026-07-02T10:52:39.901Z"
+  "deployedAt": "2026-08-06T07:29:43.604Z"
 }

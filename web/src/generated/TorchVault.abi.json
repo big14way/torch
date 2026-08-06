@@ -76,6 +76,11 @@
     "type": "error"
   },
   {
+    "inputs": [],
+    "name": "NotionalCapExceeded",
+    "type": "error"
+  },
+  {
     "inputs": [
       {
         "internalType": "address",
@@ -136,8 +141,50 @@
   },
   {
     "inputs": [],
+    "name": "TooSoon",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "TriggerNotHit",
+    "type": "error"
+  },
+  {
+    "inputs": [],
     "name": "ZeroAmount",
     "type": "error"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "maxPositionNotionalUsd6",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "maxOpenNotionalUsd6",
+        "type": "uint256"
+      }
+    ],
+    "name": "CapsUpdated",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "id",
+        "type": "uint256"
+      }
+    ],
+    "name": "CloseRequestCancelled",
+    "type": "event"
   },
   {
     "anonymous": false,
@@ -201,6 +248,25 @@
       }
     ],
     "name": "InsuranceFunded",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "to",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "amount",
+        "type": "uint256"
+      }
+    ],
+    "name": "InsuranceWithdrawn",
     "type": "event"
   },
   {
@@ -277,6 +343,31 @@
       }
     ],
     "name": "Paused",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "id",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "fullPayoutFxrp",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "paidFxrp",
+        "type": "uint256"
+      }
+    ],
+    "name": "PayoutCapped",
     "type": "event"
   },
   {
@@ -425,7 +516,89 @@
         "type": "uint256"
       }
     ],
+    "name": "RequestAccepted",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "id",
+        "type": "uint256"
+      }
+    ],
     "name": "RequestCancelled",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "id",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "oraclePrice6",
+        "type": "uint256"
+      }
+    ],
+    "name": "SelfClosed",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "id",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "bool",
+        "name": "wasStop",
+        "type": "bool"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "exitPrice6",
+        "type": "uint256"
+      }
+    ],
+    "name": "TriggerExecuted",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "id",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "stopPrice6",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "takeProfitPrice6",
+        "type": "uint256"
+      }
+    ],
+    "name": "TriggersUpdated",
     "type": "event"
   },
   {
@@ -468,6 +641,45 @@
         "type": "uint256"
       }
     ],
+    "name": "acceptRequest",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "acceptTimeout",
+    "outputs": [
+      {
+        "internalType": "uint64",
+        "name": "",
+        "type": "uint64"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "id",
+        "type": "uint256"
+      }
+    ],
+    "name": "cancelCloseRequest",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "id",
+        "type": "uint256"
+      }
+    ],
     "name": "cancelRequest",
     "outputs": [],
     "stateMutability": "nonpayable",
@@ -481,6 +693,25 @@
         "internalType": "uint16",
         "name": "",
         "type": "uint16"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "name": "closeRequestedAt",
+    "outputs": [
+      {
+        "internalType": "uint40",
+        "name": "",
+        "type": "uint40"
       }
     ],
     "stateMutability": "view",
@@ -560,6 +791,24 @@
     "type": "function"
   },
   {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "id",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "exitPrice6",
+        "type": "uint256"
+      }
+    ],
+    "name": "executeTrigger",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
     "inputs": [],
     "name": "executor",
     "outputs": [
@@ -567,6 +816,25 @@
         "internalType": "address",
         "name": "",
         "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "name": "fillAcceptedAt",
+    "outputs": [
+      {
+        "internalType": "uint40",
+        "name": "",
+        "type": "uint40"
       }
     ],
     "stateMutability": "view",
@@ -693,7 +961,7 @@
             "type": "uint64"
           },
           {
-            "internalType": "enum TorchVault.Status",
+            "internalType": "enum TorchVaultV2.Status",
             "name": "status",
             "type": "uint8"
           },
@@ -708,7 +976,7 @@
             "type": "uint40"
           }
         ],
-        "internalType": "struct TorchVault.Position",
+        "internalType": "struct TorchVaultV2.Position",
         "name": "",
         "type": "tuple"
       }
@@ -779,7 +1047,7 @@
             "type": "uint64"
           },
           {
-            "internalType": "enum TorchVault.Status",
+            "internalType": "enum TorchVaultV2.Status",
             "name": "status",
             "type": "uint8"
           },
@@ -794,7 +1062,7 @@
             "type": "uint40"
           }
         ],
-        "internalType": "struct TorchVault.Position[]",
+        "internalType": "struct TorchVaultV2.Position[]",
         "name": "out",
         "type": "tuple[]"
       }
@@ -977,6 +1245,32 @@
   },
   {
     "inputs": [],
+    "name": "maxOpenNotionalUsd6",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "maxPositionNotionalUsd6",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
     "name": "maxPriceAge",
     "outputs": [
       {
@@ -996,6 +1290,19 @@
         "internalType": "uint16",
         "name": "",
         "type": "uint16"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "openNotionalUsd6",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
       }
     ],
     "stateMutability": "view",
@@ -1117,6 +1424,63 @@
   {
     "inputs": [
       {
+        "internalType": "uint256",
+        "name": "id",
+        "type": "uint256"
+      }
+    ],
+    "name": "selfClose",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "selfCloseDelay",
+    "outputs": [
+      {
+        "internalType": "uint64",
+        "name": "",
+        "type": "uint64"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint64",
+        "name": "_timeout",
+        "type": "uint64"
+      }
+    ],
+    "name": "setAcceptTimeout",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "_maxPositionNotionalUsd6",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "_maxOpenNotionalUsd6",
+        "type": "uint256"
+      }
+    ],
+    "name": "setCaps",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
         "internalType": "address",
         "name": "_executor",
         "type": "address"
@@ -1181,12 +1545,48 @@
   {
     "inputs": [
       {
+        "internalType": "uint64",
+        "name": "_delay",
+        "type": "uint64"
+      }
+    ],
+    "name": "setSelfCloseDelay",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
         "internalType": "address",
         "name": "_treasury",
         "type": "address"
       }
     ],
     "name": "setTreasury",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "id",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "stopPrice6",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "takeProfitPrice6",
+        "type": "uint256"
+      }
+    ],
+    "name": "setTriggers",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
@@ -1218,6 +1618,30 @@
     "type": "function"
   },
   {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "name": "triggers",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "stopPrice6",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "takeProfitPrice6",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
     "inputs": [],
     "name": "unpause",
     "outputs": [],
@@ -1233,6 +1657,24 @@
       }
     ],
     "name": "withdraw",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "amount",
+        "type": "uint256"
+      },
+      {
+        "internalType": "address",
+        "name": "to",
+        "type": "address"
+      }
+    ],
+    "name": "withdrawInsurance",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
