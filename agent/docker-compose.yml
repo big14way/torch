@@ -9,10 +9,10 @@ services:
   executor:
     # Pinned by digest so the TDX attestation binds this exact image, not a
     # mutable tag (Phala nodes also cache :latest). This is the Aug 6 v2 build
-    # (TorchVaultV2 + registry-resolving reader baked in). After any
+    # with the nonzero-cloid and oracle-basis-clamp fixes. After any
     # intentional agent change: wait for CI, fetch the new digest (anonymous
     # GHCR token flow), update this line, redeploy.
-    image: ghcr.io/big14way/torch-executor@sha256:286aaeb563a0781552a0137366edf59bdaef94ba842609ce1247a38461571347
+    image: ghcr.io/big14way/torch-executor@sha256:f8082e72c78047f5990782623a92a4be277576a4e4fcf6bc94ab7f6923b30f94
     restart: unless-stopped
     ports:
       - "80:3000"
