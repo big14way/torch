@@ -59,7 +59,9 @@ export default function Honesty() {
           <b>The executor still has bounded discretion.</b> It cannot invent a price: every
           settlement must sit within 1.5% of the oracle, and as of the v2 vault it may never be
           worse for you than the oracle itself. Within that, it chooses. It can also stall: if the
-          agent stops, a close you requested waits until it returns.
+          agent stops, a close you requested waits — but never indefinitely. You can retract a
+          pending close for free at any time, and two hours after you asked — answered or not —
+          the Self-close button settles you at the live oracle price, no executor needed.
         </li>
         <li>
           <b>The owner key is a real trust assumption.</b> One address can repoint the oracle and
