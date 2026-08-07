@@ -156,10 +156,20 @@ contract TorchFdcConsumer {
             keccak256(bytes(f.coin)) == keccak256(bytes(_b32ToString(p.market))),
             "FDC: fill coin != position market"
         );
-        require(
-            keccak256(bytes(f.side)) == keccak256(bytes(p.isLong ? "Open Long" : "Open Short")),
-            "FDC: fill direction != position side"
-        );
+        // Hyperliquid's `dir` labels a fill by its effect on the ACCOUNT's net
+        // position, not the order's intent: a user-short's hedge sell reads
+        // "Close Long" whenever the house book happened to be net long (seen
+        // live on position #3). What the check must pin is the trade
+        // direction — a buy for longs, a sell for shorts — under whichever
+        // netting label it wears.
+        bytes32 sideHash = keccak256(bytes(f.side));
+        bool isBuy = sideHash == keccak256("Open Long") ||
+            sideHash == keccak256("Close Short") ||
+            sideHash == keccak256("Short > Long");
+        bool isSell = sideHash == keccak256("Open Short") ||
+            sideHash == keccak256("Close Long") ||
+            sideHash == keccak256("Long > Short");
+        require(p.isLong ? isBuy : isSell, "FDC: fill direction != position side");
 
         positionAttestedOid[positionId] = f.oid;
         oidBoundToPosition[p.hlOid] = true;

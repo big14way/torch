@@ -30,7 +30,7 @@ services:
       HL_API_URL: https://api.hyperliquid-testnet.xyz
       HL_PRIVATE_KEY: ${HL_PRIVATE_KEY}
       # v2-bound consumer: enables the enclave's per-fill FDC auto-attestation.
-      FDC_CONSUMER: "0xf8A523571D3b6b41C5203c4D7EE32648CAfEcbff"
+      FDC_CONSUMER: "0xe3B21cbD82dcc4acD4BFDAC5Ee61AC1E2B9F2a6f"
       # Same digest the image: line pins. The TDX report binds this compose,
       # so the status endpoint can state exactly which image is attested.
       IMAGE_DIGEST: "sha256:9218f1a22864dbcf24345ce1aa537728ab7f649f38d04fd3c73c5a955ba52e38"

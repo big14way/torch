@@ -138,6 +138,25 @@ describe("TorchFdcConsumer", () => {
     ).to.be.revertedWith("FDC: fill direction != position side");
   });
 
+  it("accepts a netting label: 'Close Long' backs a SHORT position (a sell is a sell)", async () => {
+    // HL's dir names the fill's effect on the account's net position. A
+    // user-short's hedge sell against a net-long house book reads "Close
+    // Long" — seen live on position #3.
+    const { vault, consumer, pinned } = await loadFixture(fixture);
+    await vault.setPosition(2, BTC, false, 888);
+    const nettedSell = { ...btcLongFill(888n), side: "Close Long" };
+    await consumer.attestFillForPosition(2, makeProof(pinned, { jq: jqForOid(888n), fill: nettedSell }));
+    expect(await consumer.positionAttestedOid(2)).to.equal(888n);
+  });
+
+  it("still rejects a sell-class label on a LONG position", async () => {
+    const { consumer, pinned } = await loadFixture(fixture);
+    const nettedSell = { ...btcLongFill(), side: "Close Long" };
+    await expect(
+      consumer.attestFillForPosition(0, makeProof(pinned, { jq: jqForOid(777n), fill: nettedSell }))
+    ).to.be.revertedWith("FDC: fill direction != position side");
+  });
+
   it("refuses an unverified proof outright", async () => {
     const { consumer, pinned } = await loadFixture(fixture);
     await consumer.setProofValid(false);
