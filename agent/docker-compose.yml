@@ -8,11 +8,12 @@
 services:
   executor:
     # Pinned by digest so the TDX attestation binds this exact image, not a
-    # mutable tag (Phala nodes also cache :latest). This is the Aug 6 v2 build
-    # with the nonzero-cloid and oracle-basis-clamp fixes. After any
-    # intentional agent change: wait for CI, fetch the new digest (anonymous
-    # GHCR token flow), update this line, redeploy.
-    image: ghcr.io/big14way/torch-executor@sha256:f8082e72c78047f5990782623a92a4be277576a4e4fcf6bc94ab7f6923b30f94
+    # mutable tag (Phala nodes also cache :latest). This is the Aug 7 build:
+    # SL/TP trigger keeper, per-fill FDC auto-attestation, revert-aware
+    # receipt waits, shared nonce manager. After any intentional agent change:
+    # wait for CI, fetch the new digest (anonymous GHCR token flow), update
+    # this line AND the IMAGE_DIGEST env below, redeploy.
+    image: ghcr.io/big14way/torch-executor@sha256:9218f1a22864dbcf24345ce1aa537728ab7f649f38d04fd3c73c5a955ba52e38
     restart: unless-stopped
     ports:
       - "80:3000"
@@ -28,3 +29,8 @@ services:
       RPC_URL: https://coston2.enosys.global/ext/C/rpc
       HL_API_URL: https://api.hyperliquid-testnet.xyz
       HL_PRIVATE_KEY: ${HL_PRIVATE_KEY}
+      # v2-bound consumer: enables the enclave's per-fill FDC auto-attestation.
+      FDC_CONSUMER: "0xf8A523571D3b6b41C5203c4D7EE32648CAfEcbff"
+      # Same digest the image: line pins. The TDX report binds this compose,
+      # so the status endpoint can state exactly which image is attested.
+      IMAGE_DIGEST: "sha256:9218f1a22864dbcf24345ce1aa537728ab7f649f38d04fd3c73c5a955ba52e38"
