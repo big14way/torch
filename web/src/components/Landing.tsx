@@ -84,7 +84,7 @@ export default function Landing() {
               >
                 See a real proof
               </a>
-            ) : (
+            ) : FDC.attestTx ? (
               <a
                 href={`https://coston2-explorer.flare.network/tx/${FDC.attestTx}`}
                 target="_blank"
@@ -92,6 +92,10 @@ export default function Landing() {
               >
                 See a real proof
               </a>
+            ) : (
+              // Never interpolate a missing hash: a redeploy that regenerates
+              // fdc.json without receipts once shipped a link to /tx/undefined.
+              <Link to="/verify">See a real proof</Link>
             )}
             . What it does not yet prove (price, size, timing) is spelled out on the{" "}
             <Link to="/verify">Verify page</Link>, next to what it does.

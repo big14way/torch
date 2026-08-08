@@ -28,9 +28,23 @@ async function main() {
   console.log("TorchFdcConsumer:", addr);
 
   // Record it alongside the generated deployment config for the script to read.
+  // Receipt fields are deliberately NOT carried over: they belong to the old
+  // consumer and would link to proofs this one does not hold. But dropping
+  // them silently once shipped a `/tx/undefined` link on the verify page, so
+  // say it loudly — the UI now degrades gracefully, and the receipts come back
+  // on the next attestation (the enclave auto-attests every venue fill).
   const file = path.join(__dirname, "..", "..", "web", "src", "generated", "fdc.json");
+  const had = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, "utf8")) : {};
   fs.writeFileSync(file, JSON.stringify({ fdcConsumer: addr, network: "coston2", vault }, null, 2));
   console.log("wrote", file);
+  if (had.attestTx || had.positionAttest) {
+    console.log(
+      "\n  NOTE: receipt links for the previous consumer were dropped (they point at\n" +
+        "  the retired contract). The verify page hides the proof links until this\n" +
+        "  consumer has a receipt — repopulate with `npm run fdc:attest -w contracts`\n" +
+        "  or by pasting an enclave-run attestation tx into fdc.json.\n"
+    );
+  }
 }
 
 main().catch((e) => {

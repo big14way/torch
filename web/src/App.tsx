@@ -112,17 +112,19 @@ export default function App() {
                   live endpoint
                 </a>
               </li>
-              <li>
-                Enclave-executed Hyperliquid fill, FDC-verified on-chain (proven Jul 22 on a
-                dedicated run, not the league loop):{" "}
-                <a
-                  href={`https://coston2-explorer.flare.network/tx/${FDC.attestTx}`}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  attestation tx
-                </a>
-              </li>
+              {FDC.attestTx && (
+                <li>
+                  Every venue-routed fill is re-proved by Flare's validators and bound to its vault
+                  position on-chain — run by the enclave itself, not by us on demand:{" "}
+                  <a
+                    href={`https://coston2-explorer.flare.network/tx/${FDC.attestTx}`}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    attestation tx
+                  </a>
+                </li>
+              )}
               {FDC.positionAttest && (
                 <li>
                   Vault position #{FDC.positionAttest.positionId} bound to its real fill (oid{" "}
