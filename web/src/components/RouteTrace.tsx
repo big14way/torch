@@ -1,5 +1,5 @@
 import { DEPLOY, FDC, type Position } from "../lib/config";
-import { useExecutorStatus } from "../lib/hooks";
+import { marketName, useExecutorStatus } from "../lib/hooks";
 
 /**
  * The route trace is Torch's signature element. It renders the actual
@@ -21,10 +21,19 @@ export default function RouteTrace({ positions }: { positions: Position[] | unde
   const teeLit = inFlight || filled;
   const hlLit = filled;
 
+  // The third hop must name where THIS position actually went, not where the
+  // enclave is capable of going. Once filled, hlOid is ground truth (0 means it
+  // settled at the FTSO mark); before that, infer from the market — no testnet
+  // venue lists XRP, so an XRP order never reaches a book however the enclave
+  // is configured.
+  const latestKey = latest ? marketName(latest.market) : undefined;
+  const venueListed = latestKey !== undefined && latestKey !== "XRP";
+  const wentToVenue = filled ? latest!.hlOid > 0n : routesToExchange && venueListed;
+
   const caption = !latest
     ? "Open a position and watch it travel."
     : latest.status === 1
-      ? routesToExchange
+      ? routesToExchange && venueListed
         ? "Margin locked on Flare. The TEE agent is placing the fill on the exchange."
         : "Margin locked on Flare. The TEE agent is filling at the FTSO mark."
       : latest.status === 3
@@ -54,13 +63,21 @@ export default function RouteTrace({ positions }: { positions: Position[] | unde
         </div>
         <div className={`node ${hlLit ? "lit" : ""}`}>
           <div className="orb" />
-          <div className="name">{routesToExchange ? "Hyperliquid" : "Settlement mark"}</div>
+          <div className="name">
+            {!latest ? (routesToExchange ? "Hyperliquid" : "Settlement mark") : wentToVenue ? "Hyperliquid" : "Settlement mark"}
+          </div>
           <div className="desc">
-            {routesToExchange
-              ? "hedge leg on the exchange book"
-              : status?.executionMode === "mock"
-                ? "filled at the FTSO mark, no exchange leg yet"
-                : "exchange routing unconfirmed"}
+            {!latest
+              ? routesToExchange
+                ? "hedge leg on the exchange book (venue-listed markets)"
+                : "filled at the FTSO mark, no exchange leg yet"
+              : wentToVenue
+                ? "hedge leg on the exchange book"
+                : routesToExchange
+                  ? `${latestKey} is not listed on the venue — filled at the FTSO mark`
+                  : status?.executionMode === "mock"
+                    ? "filled at the FTSO mark, no exchange leg yet"
+                    : "exchange routing unconfirmed"}
           </div>
         </div>
       </div>
