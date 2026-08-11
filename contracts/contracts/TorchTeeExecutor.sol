@@ -3,6 +3,15 @@ pragma solidity ^0.8.25;
 
 /// Minimal surface of TorchVaultV2 that this adapter drives. Declared locally
 /// so the adapter compiles against the DEPLOYED vault without importing it.
+/// Flare's TeeMachineRegistry, as exposed by the FlareTeeManager diamond.
+/// Returns the machines currently attested and in PRODUCTION for an extension.
+interface ITeeMachineRegistryLike {
+    function getActiveTeeMachines(uint256 extensionId)
+        external
+        view
+        returns (address[] memory teeIds, string[] memory urls);
+}
+
 interface ITorchVault {
     function confirmFill(uint256 id, uint256 entryPrice6, uint64 hlOid) external;
     function acceptRequest(uint256 id) external;
@@ -22,19 +31,21 @@ interface ITorchVault {
 /// oracle, staleness): this contract only *narrows* what reaches it.
 ///
 /// Split of powers, deliberately conservative:
-///   • confirmFill  — requires a signature from the registered TEE attestor.
-///     The agent supplies the transaction; the enclave supplies the price.
+///   • confirmFill  — requires a signature from an enclave Flare currently
+///     attests for Torch's extension. The agent supplies the transaction; the
+///     enclave supplies the price.
 ///   • everything else (acceptRequest / confirmClose / executeTrigger /
 ///     liquidate) — forwarded from the existing agent, unchanged. Those are
 ///     time-critical or have no instruction to hang off, and moving them
 ///     behind a consensus relay would make liquidations slower, not safer.
 contract TorchTeeExecutor {
     ITorchVault public immutable VAULT;
+    /// @notice Flare's TeeMachineRegistry (the FlareTeeManager diamond).
+    ITeeMachineRegistryLike public immutable TEE_REGISTRY;
+    /// @notice Torch's Flare Compute Extension id.
+    uint256 public immutable EXTENSION_ID;
 
     address public owner;
-    /// @notice The enclave's signing address, as registered on Flare's
-    /// TeeMachineRegistry for Torch's extension.
-    address public teeAttestor;
     /// @notice The off-chain agent permitted to relay non-price operations.
     address public agent;
 
@@ -42,7 +53,6 @@ contract TorchTeeExecutor {
     /// so a signature cannot be replayed onto a second position.
     mapping(uint64 => bool) public oidUsed;
 
-    event TeeAttestorUpdated(address attestor);
     event AgentUpdated(address agent);
     event FillConfirmedFromTee(uint256 indexed id, uint256 entryPrice6, uint64 hlOid, address attestor);
 
@@ -62,20 +72,22 @@ contract TorchTeeExecutor {
         _;
     }
 
-    constructor(ITorchVault _vault, address _agent, address _teeAttestor) {
+    constructor(
+        ITorchVault _vault,
+        address _agent,
+        ITeeMachineRegistryLike _teeRegistry,
+        uint256 _extensionId
+    ) {
         if (address(_vault) == address(0) || _agent == address(0)) revert ZeroAddress();
+        if (address(_teeRegistry) == address(0)) revert ZeroAddress();
         VAULT = _vault;
+        TEE_REGISTRY = _teeRegistry;
+        EXTENSION_ID = _extensionId;
         owner = msg.sender;
         agent = _agent;
-        teeAttestor = _teeAttestor; // may be zero until the enclave is registered
     }
 
     // ------------------------------------------------------------ owner
-
-    function setTeeAttestor(address _attestor) external onlyOwner {
-        teeAttestor = _attestor;
-        emit TeeAttestorUpdated(_attestor);
-    }
 
     function setAgent(address _agent) external onlyOwner {
         if (_agent == address(0)) revert ZeroAddress();
@@ -109,17 +121,36 @@ contract TorchTeeExecutor {
         uint64 hlOid,
         bytes calldata signature
     ) external onlyAgent {
-        if (teeAttestor == address(0)) revert BadSignature();
         if (oidUsed[hlOid]) revert OidAlreadyUsed();
 
         bytes32 digest = fillDigest(id, entryPrice6, hlOid);
-        // EIP-191 personal-sign envelope: what the TEE sign port produces.
-        bytes32 signed = keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", digest));
-        if (_recover(signed, signature) != teeAttestor) revert BadSignature();
+        // Match the node's SignServer exactly. Handed a message it hashes it
+        // once with keccak256 and THEN applies the EIP-191 personal-sign
+        // envelope, so verifying the envelope over `digest` alone recovers a
+        // different address on every message and would never match.
+        bytes32 inner = keccak256(abi.encodePacked(digest));
+        bytes32 signed = keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", inner));
+        address signer = _recover(signed, signature);
+        if (signer == address(0) || !_isActiveTee(signer)) revert BadSignature();
 
         oidUsed[hlOid] = true;
-        emit FillConfirmedFromTee(id, entryPrice6, hlOid, teeAttestor);
+        emit FillConfirmedFromTee(id, entryPrice6, hlOid, signer);
         VAULT.confirmFill(id, entryPrice6, hlOid);
+    }
+
+    /// @notice True when Flare currently attests this address as a PRODUCTION
+    /// machine for Torch's extension.
+    /// @dev Asked of the registry per call rather than pinned at deploy time:
+    /// a TEE's key is NOT preserved across restarts, so any address stored here
+    /// would be stale the first time the enclave restarts, and the vault would
+    /// reject every honest fill. Trusting the registry means trusting whichever
+    /// enclave Flare's data providers have attested right now.
+    function _isActiveTee(address signer) internal view returns (bool) {
+        (address[] memory teeIds, ) = TEE_REGISTRY.getActiveTeeMachines(EXTENSION_ID);
+        for (uint256 i = 0; i < teeIds.length; ++i) {
+            if (teeIds[i] == signer) return true;
+        }
+        return false;
     }
 
     // --------------------------------------------- unchanged agent paths

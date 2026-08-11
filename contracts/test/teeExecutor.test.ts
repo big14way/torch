@@ -11,6 +11,7 @@ describe("TorchTeeExecutor", () => {
   const ID = 7n;
   const PRICE6 = 64_863_000_000n;
   const OID = 57497722789n;
+  const EXT = 66154n; // Torch's Flare Compute Extension id
 
   async function fixture() {
     const [owner, agent, stranger] = await ethers.getSigners();
@@ -21,16 +22,29 @@ describe("TorchTeeExecutor", () => {
     const vault = await Vault.deploy();
     await vault.waitForDeployment();
 
+    // The adapter asks this registry, per call, whether a signer is attested.
+    const Registry = await ethers.getContractFactory("MockTeeRegistry");
+    const registry = await Registry.deploy();
+    await registry.waitForDeployment();
+    await registry.setActive(EXT, [tee.address]);
+
     const Adapter = await ethers.getContractFactory("TorchTeeExecutor");
-    const adapter = await Adapter.deploy(await vault.getAddress(), agent.address, tee.address);
+    const adapter = await Adapter.deploy(
+      await vault.getAddress(),
+      agent.address,
+      await registry.getAddress(),
+      EXT
+    );
     await adapter.waitForDeployment();
 
     const sign = async (id: bigint, price: bigint, oid: bigint, signer = tee) => {
       const digest = await adapter.fillDigest(id, price, oid);
-      return signer.signMessage(ethers.getBytes(digest));
+      // Exactly what the TEE node does with the bytes it is handed: keccak
+      // first, then the personal-sign envelope (which signMessage applies).
+      return signer.signMessage(ethers.getBytes(ethers.keccak256(digest)));
     };
 
-    return { adapter, vault, owner, agent, stranger, tee, sign };
+    return { adapter, vault, registry, owner, agent, stranger, tee, sign };
   }
 
   it("accepts a fill the enclave signed, and passes it to the vault", async () => {
@@ -50,7 +64,7 @@ describe("TorchTeeExecutor", () => {
     ).to.be.revertedWithCustomError(adapter, "BadSignature");
   });
 
-  it("rejects a signature from anyone other than the registered attestor", async () => {
+  it("rejects a signature from a key Flare does not attest", async () => {
     const { adapter, agent, sign } = await loadFixture(fixture);
     const impostor = ethers.Wallet.createRandom();
     await expect(
@@ -90,12 +104,52 @@ describe("TorchTeeExecutor", () => {
     );
   });
 
-  it("refuses to confirm at all until an attestor is set", async () => {
-    const { adapter, owner, agent, sign } = await loadFixture(fixture);
+  it("refuses to confirm at all while no machine is attested for the extension", async () => {
+    const { adapter, registry, agent, sign } = await loadFixture(fixture);
     const sig = await sign(ID, PRICE6, OID);
-    await adapter.connect(owner).setTeeAttestor(ethers.ZeroAddress);
+    await registry.setActive(EXT, []);
     await expect(
       adapter.connect(agent).confirmFillAttested(ID, PRICE6, OID, sig)
+    ).to.be.revertedWithCustomError(adapter, "BadSignature");
+  });
+
+  // The reason this contract reads the registry instead of storing an address.
+  // Flare DevRel: "TEE key is not preserved during restart. That is the key
+  // element of this." A pinned attestor would reject every honest fill from the
+  // moment the enclave restarted, and unwedging it would need an owner tx.
+  it("follows the enclave across a restart, with no owner action", async () => {
+    const { adapter, vault, registry, agent, sign } = await loadFixture(fixture);
+    const restarted = ethers.Wallet.createRandom(); // new process, new key
+
+    // Before re-registration the new key is a stranger, even though it is the
+    // one genuinely running.
+    await expect(
+      adapter.connect(agent).confirmFillAttested(ID, PRICE6, OID, await sign(ID, PRICE6, OID, restarted))
+    ).to.be.revertedWithCustomError(adapter, "BadSignature");
+
+    await registry.setActive(EXT, [restarted.address]);
+
+    await adapter
+      .connect(agent)
+      .confirmFillAttested(ID, PRICE6, OID, await sign(ID, PRICE6, OID, restarted));
+    expect(await vault.lastEntryPrice6()).to.equal(PRICE6);
+  });
+
+  it("stops trusting a key once Flare stops attesting it", async () => {
+    const { adapter, registry, agent, sign } = await loadFixture(fixture);
+    const replacement = ethers.Wallet.createRandom();
+    await registry.setActive(EXT, [replacement.address]);
+    await expect(
+      adapter.connect(agent).confirmFillAttested(ID, PRICE6, OID, await sign(ID, PRICE6, OID))
+    ).to.be.revertedWithCustomError(adapter, "BadSignature");
+  });
+
+  it("will not accept a machine attested for somebody else's extension", async () => {
+    const { adapter, registry, agent, sign } = await loadFixture(fixture);
+    const other = ethers.Wallet.createRandom();
+    await registry.setActive(EXT + 1n, [other.address]);
+    await expect(
+      adapter.connect(agent).confirmFillAttested(ID, PRICE6, OID, await sign(ID, PRICE6, OID, other))
     ).to.be.revertedWithCustomError(adapter, "BadSignature");
   });
 });

@@ -63,7 +63,7 @@ in one.
 |---|---|
 | Extension id | **66154** |
 | TorchInstructionSender | [`0x88d0c142844C418ae27e9B4bd730376ee7F3799b`](https://coston2-explorer.flare.network/address/0x88d0c142844C418ae27e9B4bd730376ee7F3799b) |
-| TorchTeeExecutor (adapter) | [`0x4059aE416F06214E92f66a544064b529A31689Aa`](https://coston2-explorer.flare.network/address/0x4059aE416F06214E92f66a544064b529A31689Aa) |
+| TorchTeeExecutor (adapter) | [`0xF203dE16EF7a7939644758dee5aadb04aA39f4Af`](https://coston2-explorer.flare.network/address/0xF203dE16EF7a7939644758dee5aadb04aA39f4Af) |
 | TorchVaultV2 (guarded) | [`0x8d9A6a11BcC64CC36e54b22ACa68865d759fa6Bd`](https://coston2-explorer.flare.network/address/0x8d9A6a11BcC64CC36e54b22ACa68865d759fa6Bd) |
 | FlareTeeManager | `0x1a9C4A0f9D76c0b1D91d22E24E573a9b377618aE` |
 
@@ -79,15 +79,50 @@ A live run, end to end: instruction tx
 `64863.0` is the entry price TorchVaultV2 stores for position #1 — the enclave
 went and looked, and got the same answer the vault recorded.
 
+And the chain verifies that signature, not just our terminal:
+[`0x341a670d…9162`](https://coston2-explorer.flare.network/tx/0x341a670d45dca72ff5ff164481441e4f22c53c0ffcfe014ec4c3591d143b9162)
+is a Coston2 transaction in which `TorchTeeExecutor` accepted a signature the
+enclave had just produced — recovering the signer, asking `FlareTeeManager`
+whether that address is currently attested for extension 66154, and burning the
+order id against replay. Reproduce it with
+[`scripts/proveTeeSignature.ts`](../contracts/scripts/proveTeeSignature.ts).
+It runs against a mock sink rather than the live vault, for the reason in
+*Honest status* below.
+
+## Which key the vault trusts
+
+Not one we wrote down. `TorchTeeExecutor` asks
+`FlareTeeManager.getActiveTeeMachines(66154)` on **every** call and accepts the
+signature only if the recovered signer is in that set.
+
+That is not defensive over-engineering, it is forced by how FCC works — as Flare
+DevRel put it, *"TEE key is not preserved during restart. That is the key element
+of this."* A pinned attestor address would be correct until the first restart and
+silently wrong forever after, rejecting every honest fill until someone noticed
+and sent an owner transaction. Reading the registry means the vault trusts
+whichever enclave Flare's data providers attest **right now**, and follows the
+enclave across a restart with no human in the loop. There is a test for exactly
+that (`follows the enclave across a restart, with no owner action`).
+
+One subtlety worth recording, because it cost us an evening: the node's
+SignServer keccak-hashes the message it is handed **before** applying the EIP-191
+personal-sign envelope. Verify the envelope over the digest alone and you recover
+a different, plausible-looking address for every message — which reads exactly
+like a key mismatch and is not one.
+
 ## Honest status
 
 - Attestation runs in **`SIMULATED_TEE=true`** mode on Coston2, which is what
   Flare's own guides prescribe for development and what Flare DevRel confirmed
   qualifies. The chain, the registration, and the data-provider consensus are
   real; the hardware quote is simulated. No Confidential Space VM is involved.
-- `TorchTeeExecutor` is **deployed but not yet wired**: the live vault's
-  `executor` still points at the Phala agent. Until `setExecutor` is called,
-  the adapter is inert.
+- `TorchTeeExecutor` is **deployed and proven, but not yet wired**: the live
+  vault's `executor` still points at the Phala agent. Wiring it is one
+  `setExecutor` call and reversible in one — but it is not only that call, which
+  is why it has not been made. The off-chain agent would also have to route its
+  `confirmFill` through `confirmFillAttested`, carrying a fresh enclave
+  signature per fill, and that change touches a vault people are trading on.
+  It is the next change, not a hidden one.
 - **Known operational trap:** rebuilding the node image mints a new enclave key,
   which requires recreating `redis` + `ext-proxy` (the proxy's identity is
   set-once) *and* re-registering. Each cycle leaves the previous teeId
