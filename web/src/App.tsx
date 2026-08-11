@@ -20,7 +20,13 @@ import MarketStrip from "./components/MarketStrip";
 
 export default function App() {
   const { path, navigate } = useRoute();
-  const [marketKey, setMarketKey] = useState<string>(DEPLOY.markets[0]?.key ?? "XRP");
+  // Default to a venue-listed market. markets[0] is XRP, which no testnet
+  // venue lists — a first-time visitor trading the default would get an
+  // FTSO-mark fill with no exchange order id, i.e. the one path that cannot
+  // show the full Flare vault -> TEE -> Hyperliquid route.
+  const [marketKey, setMarketKey] = useState<string>(
+    DEPLOY.markets.find((m) => m.key === "BTC")?.key ?? DEPLOY.markets[0]?.key ?? "XRP"
+  );
   const { address, status } = useAccount();
   const { address: viewAddress, watching } = useEffectiveAccount();
 

@@ -43,10 +43,11 @@ export function HowItWorksContent() {
             </a>
           </>
         ) : null}
-        . Next: the executor ports onto Flare Confidential Compute as a Flare Confidential
-        Extension — instructions submitted on-chain through a registered InstructionSender
-        contract, results signed inside the TEE and accepted by Flare's data providers only from
-        a code hash whitelisted on-chain — so no single operator can stall or drain it. Protocol
+        . And the port onto Flare Confidential Compute is now running: a Flare Compute
+        Extension (Coston2, extension 66154) takes an instruction submitted on-chain through a
+        registered InstructionSender contract, fetches the Hyperliquid fill from inside the
+        enclave, and signs it. The remaining step is gating the vault on that signature, so that
+        no single operator can invent a fill price. Protocol
         Managed Wallets, still in development, are the eventual endgame.
       </p>
     </div>
