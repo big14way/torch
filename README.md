@@ -19,12 +19,14 @@ What's live, staged, and next: [ROADMAP.md](ROADMAP.md). At a glance, so no sent
 | Stop-loss / take-profit | **Live** end to end (Aug 7): triggers set on-chain, the keeper fires only when the contract re-reads FTSO and agrees | set from the positions table |
 | One-signature margin from a bare XRPL wallet | **Proven on-chain** (spike, not yet product UI) | XRPL + Coston2 receipts below |
 | Hyperliquid builder-code revenue | **Wired, never exercised** | `HL_BUILDER_ADDRESS` in the adapter, unset today |
-| FCE migration · PMW · FDC-gated settlement | **Planned** | [ROADMAP.md](ROADMAP.md) |
+| Flare Confidential Compute (FCE) | **Live on Coston2** (Aug 11): extension 66154, `TORCH`/`ATTEST_FILL`, enclave-signed fills | [fce/](fce/README.md) + receipts there |
+| Vault gated on the enclave signature | **Deployed, not yet wired** — adapter is inert until `setExecutor` | [TorchTeeExecutor](contracts/contracts/TorchTeeExecutor.sol) |
+| PMW · FDC-gated settlement | **Planned** | [ROADMAP.md](ROADMAP.md) |
 
 Built for the Flare Summer Signal hackathon, entering both bounties:
 
 - Interoperable Asset Products: FXRP margin on Flare with a hedge leg routing live to external Hyperliquid liquidity (venue-listed markets; XRP falls back to the FTSO mark)
-- Confidential Compute Apps: a TEE-held executor key with a no-withdrawal exchange wallet, migrating onto Flare Confidential Compute as a Flare Confidential Extension (FCE); Protocol Managed Wallets are the later endgame once they ship
+- Confidential Compute Apps: a TEE-held executor key with a no-withdrawal exchange wallet — **now joined by a Flare Compute Extension running on Flare's own confidential-compute stack** (Coston2, extension 66154), which fetches a position's Hyperliquid fill from inside the enclave and signs it for on-chain verification; Protocol Managed Wallets are the later endgame once they ship
 
 ## How it works
 
