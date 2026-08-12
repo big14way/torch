@@ -21,6 +21,10 @@ describe("TorchTeeExecutor", () => {
     const Vault = await ethers.getContractFactory("MockVaultSink");
     const vault = await Vault.deploy();
     await vault.waitForDeployment();
+    // Oracle parked far from the venue price so the clamp is inert unless a
+    // test moves it. PRICE6 is 64_863 * 1e6.
+    const oracle = await ethers.getContractAt("MockPriceReader", await vault.oracle());
+    await oracle.set(1_000_000_000_000n, 6);
 
     // The adapter asks this registry, per call, whether a signer is attested.
     const Registry = await ethers.getContractFactory("MockTeeRegistry");
@@ -44,7 +48,7 @@ describe("TorchTeeExecutor", () => {
       return signer.signMessage(ethers.getBytes(ethers.keccak256(digest)));
     };
 
-    return { adapter, vault, registry, owner, agent, stranger, tee, sign };
+    return { adapter, vault, oracle, registry, owner, agent, stranger, tee, sign };
   }
 
   it("accepts a fill the enclave signed, and passes it to the vault", async () => {
@@ -53,6 +57,71 @@ describe("TorchTeeExecutor", () => {
     expect(await vault.lastId()).to.equal(ID);
     expect(await vault.lastEntryPrice6()).to.equal(PRICE6);
     expect(await vault.lastOid()).to.equal(OID);
+  });
+
+  // The vault rejects any entry worse for the trader than the oracle, and
+  // Hyperliquid does not track FTSO, so without this the attested price would
+  // bounce off that guard on roughly half of all fills.
+  describe("oracle clamp", () => {
+    const WORSE_FOR_LONG = PRICE6 + 200_000_000n; // venue above oracle
+    const BETTER_FOR_LONG = PRICE6 - 200_000_000n;
+
+    it("stores the oracle price when the venue filled worse for a long", async () => {
+      const { adapter, vault, oracle, agent, sign } = await loadFixture(fixture);
+      await oracle.set(PRICE6, 6);
+      await adapter
+        .connect(agent)
+        .confirmFillAttested(ID, WORSE_FOR_LONG, OID, await sign(ID, WORSE_FOR_LONG, OID));
+      expect(await vault.lastEntryPrice6()).to.equal(PRICE6);
+    });
+
+    it("keeps the venue price when it was already better for a long", async () => {
+      const { adapter, vault, oracle, agent, sign } = await loadFixture(fixture);
+      await oracle.set(PRICE6, 6);
+      await adapter
+        .connect(agent)
+        .confirmFillAttested(ID, BETTER_FOR_LONG, OID, await sign(ID, BETTER_FOR_LONG, OID));
+      expect(await vault.lastEntryPrice6()).to.equal(BETTER_FOR_LONG);
+    });
+
+    it("clamps the other way for a short", async () => {
+      const { adapter, vault, oracle, agent, sign } = await loadFixture(fixture);
+      await vault.setIsLong(false);
+      await oracle.set(PRICE6, 6);
+      // A short wants to sell high; selling below the oracle is the bad side.
+      await adapter
+        .connect(agent)
+        .confirmFillAttested(ID, BETTER_FOR_LONG, OID, await sign(ID, BETTER_FOR_LONG, OID));
+      expect(await vault.lastEntryPrice6()).to.equal(PRICE6);
+    });
+
+    it("normalises feed decimals the way the vault does", async () => {
+      const { adapter, vault, oracle, agent, sign } = await loadFixture(fixture);
+      await oracle.set(6_486_300_000_000n, 8); // same price, 8 decimals
+      await adapter
+        .connect(agent)
+        .confirmFillAttested(ID, WORSE_FOR_LONG, OID, await sign(ID, WORSE_FOR_LONG, OID));
+      expect(await vault.lastEntryPrice6()).to.equal(PRICE6);
+    });
+
+    it("reports both prices, so the clamp is checkable from the log", async () => {
+      const { adapter, oracle, agent, tee, sign } = await loadFixture(fixture);
+      await oracle.set(PRICE6, 6);
+      await expect(
+        adapter.connect(agent).confirmFillAttested(ID, WORSE_FOR_LONG, OID, await sign(ID, WORSE_FOR_LONG, OID))
+      )
+        .to.emit(adapter, "FillConfirmedFromTee")
+        .withArgs(ID, WORSE_FOR_LONG, PRICE6, OID, tee.address);
+    });
+
+    it("still refuses a price the enclave did not sign, clamp or no clamp", async () => {
+      const { adapter, oracle, agent, sign } = await loadFixture(fixture);
+      await oracle.set(PRICE6, 6);
+      const sig = await sign(ID, WORSE_FOR_LONG, OID);
+      await expect(
+        adapter.connect(agent).confirmFillAttested(ID, WORSE_FOR_LONG - 1n, OID, sig)
+      ).to.be.revertedWithCustomError(adapter, "BadSignature");
+    });
   });
 
   it("rejects a price the enclave did not sign — the operator cannot substitute a number", async () => {

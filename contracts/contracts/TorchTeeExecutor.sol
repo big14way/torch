@@ -12,7 +12,30 @@ interface ITeeMachineRegistryLike {
         returns (address[] memory teeIds, string[] memory urls);
 }
 
+interface IPriceReaderLike {
+    function getPrice(bytes21 feedId) external view returns (uint256 value, int8 decimals, uint64 timestamp);
+}
+
 interface ITorchVault {
+    struct Position {
+        uint256 id;
+        address owner;
+        bytes32 market;
+        bool isLong;
+        uint256 marginFxrp;
+        uint256 sizeUsd6;
+        uint256 entryPrice6;
+        uint256 exitPrice6;
+        int256 pnlFxrp;
+        uint64 hlOid;
+        uint8 status;
+        uint40 openedAt;
+        uint40 closedAt;
+    }
+
+    function getPosition(uint256 id) external view returns (Position memory);
+    function markets(bytes32 key) external view returns (bytes21 feedId, bool listed, uint16 maxLeverageX10);
+    function oracle() external view returns (IPriceReaderLike);
     function confirmFill(uint256 id, uint256 entryPrice6, uint64 hlOid) external;
     function acceptRequest(uint256 id) external;
     function confirmClose(uint256 id, uint256 exitPrice6) external;
@@ -32,8 +55,10 @@ interface ITorchVault {
 ///
 /// Split of powers, deliberately conservative:
 ///   • confirmFill  — requires a signature from an enclave Flare currently
-///     attests for Torch's extension. The agent supplies the transaction; the
-///     enclave supplies the price.
+///     attests for Torch's extension, then clamps that price to Flare's oracle
+///     in the trader's favour. The agent supplies the transaction; the enclave
+///     supplies the price; the chain does the clamping that the agent used to
+///     do off-chain.
 ///   • everything else (acceptRequest / confirmClose / executeTrigger /
 ///     liquidate) — forwarded from the existing agent, unchanged. Those are
 ///     time-critical or have no instruction to hang off, and moving them
@@ -54,7 +79,15 @@ contract TorchTeeExecutor {
     mapping(uint64 => bool) public oidUsed;
 
     event AgentUpdated(address agent);
-    event FillConfirmedFromTee(uint256 indexed id, uint256 entryPrice6, uint64 hlOid, address attestor);
+    /// @param attestedPrice6 what the enclave saw on the venue
+    /// @param settledPrice6 what the vault stored, after the oracle clamp
+    event FillConfirmedFromTee(
+        uint256 indexed id,
+        uint256 attestedPrice6,
+        uint256 settledPrice6,
+        uint64 hlOid,
+        address attestor
+    );
 
     error NotOwner();
     error NotAgent();
@@ -134,8 +167,49 @@ contract TorchTeeExecutor {
         if (signer == address(0) || !_isActiveTee(signer)) revert BadSignature();
 
         oidUsed[hlOid] = true;
-        emit FillConfirmedFromTee(id, entryPrice6, hlOid, signer);
-        VAULT.confirmFill(id, entryPrice6, hlOid);
+        uint256 settled = _clampToOracle(id, entryPrice6);
+        emit FillConfirmedFromTee(id, entryPrice6, settled, hlOid, signer);
+        VAULT.confirmFill(id, settled, hlOid);
+    }
+
+    /// @notice The price the vault actually stores: the better of what the
+    /// venue filled at and what Flare's oracle says, from the trader's side.
+    ///
+    /// @dev This has to exist, and it has to live here. Hyperliquid does not
+    /// track FTSO exactly, so a real fill lands on the wrong side of the
+    /// vault's no-worse-than-oracle guard about half the time. Torch's agent
+    /// has always absorbed that by quietly reporting the trader-favourable
+    /// side — correct for the trader, but the operator's word for it. Doing it
+    /// on-chain keeps the outcome and drops the trust: the venue price is
+    /// enclave-signed, the clamp is a pure function of it, and both numbers are
+    /// in the event, so anyone can recompute what happened.
+    ///
+    /// Note this can only ever move the price in the TRADER's favour. It gives
+    /// the operator no new freedom: a fabricated venue price still has to carry
+    /// an enclave signature, and the vault's own band check still applies to
+    /// whatever comes out of here.
+    function _clampToOracle(uint256 id, uint256 attested6) internal view returns (uint256) {
+        ITorchVault.Position memory p = VAULT.getPosition(id);
+        (bytes21 feedId, , ) = VAULT.markets(p.market);
+        uint256 ref6 = _oraclePrice6(feedId);
+        if (ref6 == 0) return attested6; // let the vault's own guards reject it
+        // Entry: a long wants to buy lower, a short wants to sell higher.
+        if (p.isLong) return attested6 < ref6 ? attested6 : ref6;
+        return attested6 > ref6 ? attested6 : ref6;
+    }
+
+    /// @dev Mirrors TorchVaultV2._price6 so the adapter compares against the
+    /// same number the vault is about to check. Returns 0 rather than
+    /// reverting, so an oracle problem surfaces as the vault's own revert.
+    function _oraclePrice6(bytes21 feedId) internal view returns (uint256) {
+        try VAULT.oracle().getPrice(feedId) returns (uint256 value, int8 dec, uint64) {
+            if (value == 0) return 0;
+            if (dec == 6) return value;
+            if (dec > 6) return value / (10 ** uint256(uint8(dec - 6)));
+            return value * (10 ** uint256(6 - int256(dec)));
+        } catch {
+            return 0;
+        }
     }
 
     /// @notice True when Flare currently attests this address as a PRODUCTION

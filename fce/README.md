@@ -63,7 +63,7 @@ in one.
 |---|---|
 | Extension id | **66154** |
 | TorchInstructionSender | [`0x88d0c142844C418ae27e9B4bd730376ee7F3799b`](https://coston2-explorer.flare.network/address/0x88d0c142844C418ae27e9B4bd730376ee7F3799b) |
-| TorchTeeExecutor (adapter) | [`0xF203dE16EF7a7939644758dee5aadb04aA39f4Af`](https://coston2-explorer.flare.network/address/0xF203dE16EF7a7939644758dee5aadb04aA39f4Af) |
+| TorchTeeExecutor (adapter) | [`0xad5b7703C5E201DAE04D3F41D4338fAa93eA641f`](https://coston2-explorer.flare.network/address/0xad5b7703C5E201DAE04D3F41D4338fAa93eA641f) |
 | TorchVaultV2 (guarded) | [`0x8d9A6a11BcC64CC36e54b22ACa68865d759fa6Bd`](https://coston2-explorer.flare.network/address/0x8d9A6a11BcC64CC36e54b22ACa68865d759fa6Bd) |
 | FlareTeeManager | `0x1a9C4A0f9D76c0b1D91d22E24E573a9b377618aE` |
 
@@ -109,6 +109,32 @@ SignServer keccak-hashes the message it is handed **before** applying the EIP-19
 personal-sign envelope. Verify the envelope over the digest alone and you recover
 a different, plausible-looking address for every message — which reads exactly
 like a key mismatch and is not one.
+
+## The clamp, and why it moved on-chain
+
+TorchVaultV2 rejects any entry price worse for the trader than Flare's oracle.
+Hyperliquid does not track FTSO exactly — we measure tens of basis points of
+drift — so a genuine venue fill lands on the wrong side of that guard roughly
+half the time.
+
+Torch's agent has always absorbed this by reporting the trader-favourable side
+of (venue, oracle). Correct for the trader, but it is the operator's word.
+`TorchTeeExecutor` now does it in the contract instead: the enclave signs what
+the venue actually filled at, and the adapter stores the better of that and the
+oracle, emitting **both** numbers.
+
+```
+FillConfirmedFromTee(id, attestedPrice6, settledPrice6, hlOid, attestor)
+```
+
+The clamp can only move a price in the trader's favour, and it hands the
+operator no new freedom — a fabricated venue price still needs an enclave
+signature, and the vault's own band check still applies to whatever comes out.
+What changes is that the adjustment is now a pure function of a signed input,
+recomputable by anyone from the log, rather than something the agent did
+privately.
+
+Without it, wiring the vault would have reverted about half of all opens.
 
 ## Honest status
 

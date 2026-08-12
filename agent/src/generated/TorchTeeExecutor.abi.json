@@ -75,7 +75,13 @@
       {
         "indexed": false,
         "internalType": "uint256",
-        "name": "entryPrice6",
+        "name": "attestedPrice6",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "settledPrice6",
         "type": "uint256"
       },
       {
