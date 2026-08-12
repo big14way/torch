@@ -67,27 +67,33 @@ in one.
 | TorchVaultV2 (guarded) | [`0x8d9A6a11BcC64CC36e54b22ACa68865d759fa6Bd`](https://coston2-explorer.flare.network/address/0x8d9A6a11BcC64CC36e54b22ACa68865d759fa6Bd) |
 | FlareTeeManager | `0x1a9C4A0f9D76c0b1D91d22E24E573a9b377618aE` |
 
-A live run, end to end: instruction tx
-[`0x1d84be38…3f2c`](https://coston2-explorer.flare.network/tx/0x1d84be384922252f1eb7e3acf89a24248b5b1871b2845f84f7f5bcc2e5d63f2c)
-→ the enclave returned
+A live run against the **live vault**, end to end. Position #21 was opened on
+TorchVaultV2 and filled through the adapter:
 
 ```json
-{"positionId":1,"oid":57497722789,"coin":"BTC","side":"Open Long",
- "px":"64863.0","sz":"0.00024","time":1786005181517,"found":true}
+{"positionId":21,"oid":57757222726,"coin":"BTC","side":"Open Long",
+ "px":"63953.0","found":true}
 ```
 
-`64863.0` is the entry price TorchVaultV2 stores for position #1 — the enclave
-went and looked, and got the same answer the vault recorded.
+The vault stores exactly that. Check it yourself, and it does not expire:
 
-And the chain verifies that signature, not just our terminal:
+| Read | Returns |
+|---|---|
+| `TorchVaultV2.getPosition(21)` | `entryPrice6 = 63953000000`, `hlOid = 57757222726` |
+| `TorchTeeExecutor.oidUsed(57757222726)` | `true` — the order id is spent, so no signature can be replayed |
+| `TorchVaultV2.executor()` | `0xad5b7703…a641f`, the adapter |
+
+The price the enclave signed is the price the vault stored, and the adapter that
+enforced it is the vault's executor. Both legs of #21 — open and close — landed
+inside ten seconds.
+
+The earlier proof transaction
 [`0x341a670d…9162`](https://coston2-explorer.flare.network/tx/0x341a670d45dca72ff5ff164481441e4f22c53c0ffcfe014ec4c3591d143b9162)
-is a Coston2 transaction in which `TorchTeeExecutor` accepted a signature the
-enclave had just produced — recovering the signer, asking `FlareTeeManager`
-whether that address is currently attested for extension 66154, and burning the
-order id against replay. Reproduce it with
+predates the wiring and ran against a test sink rather than the live vault. It
+is kept for the record — it shows the signature recovery, the registry lookup
+and the replay burn in isolation — and can be reproduced with
 [`scripts/proveTeeSignature.ts`](../contracts/scripts/proveTeeSignature.ts).
-It runs against a mock sink rather than the live vault, for the reason in
-*Honest status* below.
+The live vault has since done the same thing for real, which is the run above.
 
 ## Two keys, two different jobs
 
