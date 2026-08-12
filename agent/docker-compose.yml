@@ -14,7 +14,7 @@ services:
     # wait for CI, fetch the new digest (anonymous GHCR token flow), update
     # this line AND the IMAGE_DIGEST env below, redeploy.
     # Aug 12 build: routes through the FCC adapter when the vault points at it.
-    image: ghcr.io/big14way/torch-executor@sha256:a38c12f3c77a8d8a90115076f0d3e3f93a33c0dd62fa8a9a14b3ae30aee413fd
+    image: ghcr.io/big14way/torch-executor@sha256:035e5ed0dea6c4b5a5b77a48537c506c5a23b915803a4305b2f4a8d377bf8922
     restart: unless-stopped
     ports:
       - "80:3000"
@@ -42,4 +42,4 @@ services:
       FCE_ACTION_URL: "https://torch-fce-production.up.railway.app/action"
       # Same digest the image: line pins. The TDX report binds this compose,
       # so the status endpoint can state exactly which image is attested.
-      IMAGE_DIGEST: "sha256:a38c12f3c77a8d8a90115076f0d3e3f93a33c0dd62fa8a9a14b3ae30aee413fd"
+      IMAGE_DIGEST: "sha256:035e5ed0dea6c4b5a5b77a48537c506c5a23b915803a4305b2f4a8d377bf8922"

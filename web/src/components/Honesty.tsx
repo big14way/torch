@@ -78,10 +78,14 @@ export default function Honesty() {
           no exchange order id, so it cannot be attested at all.
         </li>
         <li>
-          <b>Attestation does not gate settlement.</b> The enclave now runs the round trip itself
-          for every venue-routed fill, so receipts arrive without anyone asking — but no vault code
-          path reads them. An unattested position settles exactly like an attested one. It is a
-          receipt, not a precondition.
+          <b>The entry price is gated; the exit price is not.</b> Since Aug 12 the vault will not
+          accept an entry price without a signature from an enclave Flare currently attests
+          (extension 66154, checked on-chain against Flare's TEE registry) — so the operator can
+          send the transaction but cannot choose the number in it. That guard covers the entry
+          only. Your exit is still an operator-reported price, bounded by the FTSO band and the
+          never-worse-than-oracle rule, but not signed by anything. And the FDC receipts remain
+          receipts: they arrive automatically for every venue-routed fill, and no vault code path
+          reads them.
         </li>
         <li>
           <b>Exchange routing will not cover every market.</b> Hyperliquid's testnet does not

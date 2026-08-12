@@ -89,6 +89,23 @@ order id against replay. Reproduce it with
 It runs against a mock sink rather than the live vault, for the reason in
 *Honest status* below.
 
+## Two keys, two different jobs
+
+Torch has two enclaves, and it is worth being precise about which does what,
+because "we use a TEE" is the kind of claim that hides more than it says.
+
+| | **Phala enclave** (Intel TDX) | **Flare Compute Extension** |
+|---|---|---|
+| Holds | the executor key that sends transactions | the key that signs fill prices |
+| Can | submit to the chain, pay gas, pick the moment | read Hyperliquid and state what filled |
+| Cannot | **choose the entry price** | **send a transaction, or move funds** |
+| Attested by | real TDX hardware, image digest published | Flare's data providers, on-chain registry |
+
+The separation is the point. The operator can send a transaction but cannot
+invent the number in it; the enclave decides the number but cannot send
+anything. Neither one alone can move a position, and the chain checks both:
+`onlyAgent` for who submits, `getActiveTeeMachines(66154)` for who signed.
+
 ## Which key the vault trusts
 
 Not one we wrote down. `TorchTeeExecutor` asks
@@ -142,13 +159,12 @@ Without it, wiring the vault would have reverted about half of all opens.
   Flare's own guides prescribe for development and what Flare DevRel confirmed
   qualifies. The chain, the registration, and the data-provider consensus are
   real; the hardware quote is simulated. No Confidential Space VM is involved.
-- `TorchTeeExecutor` is **deployed and proven, but not yet wired**: the live
-  vault's `executor` still points at the Phala agent. Wiring it is one
-  `setExecutor` call and reversible in one — but it is not only that call, which
-  is why it has not been made. The off-chain agent would also have to route its
-  `confirmFill` through `confirmFillAttested`, carrying a fresh enclave
-  signature per fill, and that change touches a vault people are trading on.
-  It is the next change, not a hidden one.
+- `TorchTeeExecutor` is **wired and live**. `TorchVaultV2.executor` is the
+  adapter, so no entry price reaches the vault without a signature from an
+  enclave Flare currently attests. Verified end to end on Coston2: position #20
+  opened at 63934.0 with `oidUsed(57756491649) == true`, and closed, both inside
+  10 seconds. Reversible in one `setExecutor`, and the agent follows the vault
+  either way with no redeploy.
 - **Known operational trap:** rebuilding the node image mints a new enclave key,
   which requires recreating `redis` + `ext-proxy` (the proxy's identity is
   set-once) *and* re-registering. Each cycle leaves the previous teeId

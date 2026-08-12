@@ -43,12 +43,14 @@ export function HowItWorksContent() {
             </a>
           </>
         ) : null}
-        . And the port onto Flare Confidential Compute is now running: a Flare Compute
-        Extension (Coston2, extension 66154) takes an instruction submitted on-chain through a
-        registered InstructionSender contract, fetches the Hyperliquid fill from inside the
-        enclave, and signs it. The remaining step is gating the vault on that signature, so that
-        no single operator can invent a fill price. Protocol
-        Managed Wallets, still in development, are the eventual endgame.
+        . And the vault is now gated on Flare's own confidential compute: a Flare Compute
+        Extension (Coston2, extension 66154) reads your fill from Hyperliquid inside the enclave
+        and signs it, and the vault will not accept an entry price without that signature —
+        checked on-chain against Flare's TEE registry, then moved to the oracle price if the
+        oracle was kinder to you. Two enclaves, two jobs: the operator's key can send the
+        transaction but cannot choose the number in it, and the signing enclave can choose the
+        number but cannot send anything. Protocol Managed Wallets, still in development, are the
+        eventual endgame.
       </p>
     </div>
   );
