@@ -240,6 +240,24 @@ export class HyperliquidTestnet implements Exchange {
     const mid6 = await this.mid6(market);
     const sz = (Number(sizeUsd6) / Number(mid6)).toFixed(meta.szDecimals);
     const szNum = parseFloat(sz);
+    // Reduce-only is only valid when the venue's NET position for this asset is
+    // on the side we are shrinking and at least this size. Hyperliquid nets per
+    // asset, but Torch hedges per position, so a mixed book — say a $78 short
+    // and a $30 long — nets short while the agent still has longs to close, and
+    // "sell reduce-only" is rejected as "would increase position".
+    //
+    // That was masked for a week: duplicate orders left the book so long that
+    // reduce-only always had room. With the book correctly hedged it surfaces
+    // immediately. Netting means a plain order moves net exposure by exactly the
+    // same amount, so fall back to one and say so in the log.
+    const szi = await this.netSzi(market);
+    const reducing = isLong ? szi >= szNum : szi <= -szNum;
+    if (!reducing) {
+      console.log(
+        `[exchange] ${market} net szi ${szi}; a reduce-only close of ${szNum} would be rejected, ` +
+          `placing a plain offsetting order instead (net exposure moves identically)`
+      );
+    }
     const result = await client.order({
       orders: [
         {
@@ -247,7 +265,7 @@ export class HyperliquidTestnet implements Exchange {
           b: !isLong, // closing = opposite side
           p: this.slippagePx(mid6, !isLong),
           s: sz,
-          r: true, // reduce-only
+          r: reducing,
           t: { limit: { tif: "Ioc" } },
         },
       ],
@@ -255,6 +273,22 @@ export class HyperliquidTestnet implements Exchange {
       ...(this.builderField() ? { builder: this.builderField() } : {}),
     });
     return this.readFill(result, "close", szNum);
+  }
+
+  /** Signed net position size for an asset, in asset units. Positive is long. */
+  private async netSzi(market: string): Promise<number> {
+    const res = await fetch(`${this.apiUrl}/info`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ type: "clearinghouseState", user: this.account }),
+    });
+    if (!res.ok) throw new Error(`clearinghouseState failed: HTTP ${res.status}`);
+    const st = (await res.json()) as any;
+    const coin = HL_COIN[market];
+    for (const a of st?.assetPositions ?? []) {
+      if (a?.position?.coin === coin) return parseFloat(a.position.szi ?? "0");
+    }
+    return 0;
   }
 
   /** Look for an existing fill carrying this client order id. Makes open()
@@ -334,6 +368,12 @@ export class HyperliquidTestnet implements Exchange {
     if (!meta || sz <= 0) return;
     const client = await this.client();
     const mid6 = await this.mid6(market);
+    // Same netting caveat as close(): on a mixed book the venue's net can be on
+    // the other side, and reduce-only is then rejected — which would leave a
+    // partial fill un-unwound, i.e. exactly the naked exposure this exists to
+    // prevent. Offset plainly when reduce-only cannot apply.
+    const szi = await this.netSzi(market);
+    const reducing = wasLong ? szi >= sz : szi <= -sz;
     await client.order({
       orders: [
         {
@@ -341,7 +381,7 @@ export class HyperliquidTestnet implements Exchange {
           b: !wasLong,
           p: this.slippagePx(mid6, !wasLong),
           s: sz.toFixed(meta.szDecimals),
-          r: true,
+          r: reducing,
           t: { limit: { tif: "Ioc" } },
         },
       ],
