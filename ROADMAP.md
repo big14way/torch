@@ -22,13 +22,25 @@ Flare Smart Accounts' custom-instruction flow reached TorchVault with **zero con
 ## Proven (Jul 22): the enclave trades the real book
 The full differentiating loop has now run end-to-end from attested hardware: the enclave-held key placed and closed a **real Hyperliquid testnet order** (BTC, oids 56855249387 / 56855250250), and Flare's Data Connector independently re-fetched and verified that exact fill on-chain — [tx 0xe2798ac7…57c01](https://coston2-explorer.flare.network/tx/0xe2798ac7031802b535ec2a52f844a2c811021b496151ba21405ece9dc3257c01). Production flipped to real exchange execution on Aug 6, the morning after Season 2 closed — see Live now.
 
+## Shipped
+- **The executor is gated on a Flare Confidential Extension.** Done Aug 12, not
+  planned: extension 66154 runs on hosted infrastructure, reads the Hyperliquid
+  fill inside the enclave and signs it, and `TorchTeeExecutor` — which IS
+  `TorchVaultV2.executor()` — verifies that signature against
+  `FlareTeeManager.getActiveTeeMachines(66154)` before the vault will store an
+  entry price. On venue-routed markets, an unsigned entry does not settle.
+  Details and the reproducible reads: [`fce/README.md`](fce/README.md).
+
 ## Next (dated)
-- **FDC-gated settlement** — attestation currently proves fills after the fact on every venue fill; wiring the proof INTO settlement (so a fill is not believed until validators agree) is the FCE-era design.
+- **Gate the EXIT price the way the entry now is.** The exit carries no exchange
+  order id, so there is nothing for the enclave to look up; it needs a different
+  proof than a fill lookup. This is the largest remaining gap in the trust model
+  and it is named on the /verify page.
+- **FDC-gated settlement** — attestation currently proves fills after the fact on every venue fill; wiring the proof INTO settlement (so a fill is not believed until validators agree) is the next step beyond the entry gate.
 - **League Season 3** on the v2 vault.
 - **Aug 7–11, stretch (only if v2 and the demo video land early): "Fund from your XRP wallet."** The guided version of the Jul 29 proof: the UI builds the Smart Accounts instruction, your XRPL wallet signs one payment (QR / Xaman), and the enclave agent runs the permissionless executor leg that lands margin on Flare. Design: [`spikes/fsa-one-signature-margin/FUNDING_FLOW.md`](spikes/fsa-one-signature-margin/FUNDING_FLOW.md). If the window closes, this moves to the top of post-hackathon work, not out of it.
 
 ## Horizon
-- **Port the executor to a Flare Confidential Extension (FCE).** Per Flare-team guidance this replaces "wait for PMWs" as the decentralization path available now: the executor runs on Flare's own confidential-compute stack (approved for Songbird via STP.13, Jul 12 2026): instructions enter on-chain through the extension's registered InstructionSender contract, and results are signed inside the TEE and accepted by Flare's data providers only from a code hash whitelisted on-chain. Reference: [flare-foundation/fce-orderbook](https://github.com/flare-foundation/fce-orderbook).
 - **Mainnet pilot** with FXRP margin, tight caps, real Hyperliquid execution with a builder code attached.
 - **Protocol Managed Wallets** remain the endgame once they ship (still in development): the executor role moves to the protocol quorum entirely. The vault contract does not change — it only ever knew an executor address.
 
