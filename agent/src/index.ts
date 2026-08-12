@@ -12,12 +12,16 @@ import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import deployments from "./generated/deployments.json" with { type: "json" };
 import vaultAbiJson from "./generated/TorchVault.abi.json" with { type: "json" };
 import oracleAbiJson from "./generated/MockFtsoV2.abi.json" with { type: "json" };
+import adapterAbiJson from "./generated/TorchTeeExecutor.abi.json" with { type: "json" };
 import { MockExchange, HyperliquidTestnet, type Exchange } from "./exchange.js";
 import { startAttester } from "./attest.js";
 import { getAttestation, inEnclave } from "./tee.js";
 import { createServer as createHttpServer } from "node:http";
 
+import { TeeAttestor, type Attestation } from "./teeAttest.js";
+
 const vaultAbi = vaultAbiJson as Abi;
+const adapterAbi = adapterAbiJson as Abi;
 const oracleAbi = oracleAbiJson as Abi;
 
 const RPC_URL = process.env.RPC_URL || "http://127.0.0.1:8545";
@@ -170,6 +174,41 @@ async function main() {
   }
 
   const vault = { address: deployments.vault as Address, abi: vaultAbi } as const;
+
+  // The FCC adapter. Deploying this agent is safe BEFORE the vault is
+  // repointed: we ask the vault who its executor is and only route through the
+  // adapter once that is the adapter itself. So `setExecutor` alone flips the
+  // behaviour, and flipping it back needs no redeploy either.
+  const ADAPTER = process.env.TEE_ADAPTER_ADDRESS as Address | undefined;
+  const adapter = ADAPTER ? ({ address: ADAPTER, abi: adapterAbi } as const) : undefined;
+  const teeAttestor = process.env.FCE_ACTION_URL
+    ? new TeeAttestor(process.env.FCE_ACTION_URL)
+    : undefined;
+
+  // Re-read rather than assume: the flip can happen while we are running, and
+  // guessing wrong means every call reverts. Cached briefly so a busy poll does
+  // not add an RPC round trip per position, but short enough that setExecutor
+  // takes effect within seconds — including the rollback direction.
+  let modeCache: { at: number; on: boolean } | undefined;
+  const MODE_TTL_MS = 15_000;
+  async function attestedMode(): Promise<boolean> {
+    if (!adapter || !teeAttestor) return false;
+    const now = Date.now();
+    if (modeCache && now - modeCache.at < MODE_TTL_MS) return modeCache.on;
+    try {
+      const ex = (await pub.readContract({ ...vault, functionName: "executor" })) as Address;
+      const on = ex.toLowerCase() === adapter.address.toLowerCase();
+      modeCache = { at: now, on };
+      return on;
+    } catch {
+      return modeCache?.on ?? false; // a blip must not silently change routing
+    }
+  }
+
+  /** Whichever contract the vault currently takes orders from. */
+  async function relay() {
+    return (await attestedMode()) ? adapter! : vault;
+  }
 
   const markKey = (m: `0x${string}`) => hexToString(m, { size: 32 });
 
@@ -415,7 +454,7 @@ async function main() {
             // we just keep carrying the free-cancel risk for this one.
             try {
               const acceptHash = await wallet.writeContract({
-                ...vault,
+                ...(await relay()),
                 functionName: "acceptRequest",
                 args: [p.id],
                 gas: 200_000n,
@@ -444,17 +483,40 @@ async function main() {
               ((attempt << 96n) | (BigInt(p.id) + 1n)).toString(16).padStart(32, "0")) as string;
             const fill = await exchange.open(key, p.isLong, p.sizeUsd6, cloid);
             const reportedEntry6 = await clampToOracle(key, p.id, fill.price6, p.isLong);
+
+            // Attested mode: the enclave's price is the only one the chain will
+            // take, so we do not get to clamp it — that is the entire point.
+            // A price the enclave saw but the vault's FTSO band rejects fails
+            // loudly instead of being nudged into range.
+            const useAdapter = await attestedMode();
+            let attested: Attestation | null = null;
+            if (useAdapter) {
+              attested = await teeAttestor!.attest(p.id, fill.oid);
+              if (!attested) {
+                // Not a failure — the enclave has not seen this fill yet, or is
+                // briefly unreachable. Leave the position Requested and retry;
+                // the cloid is deterministic per attempt, so the next pass
+                // re-finds THIS fill rather than opening a second one.
+                log(p.id, `enclave has not attested oid ${fill.oid}; leaving Requested to retry`);
+                continue;
+              }
+            }
+            const entry6 = attested ? attested.entryPrice6 : reportedEntry6;
             try {
               const hash = await wallet.writeContract({
-                ...vault,
-                functionName: "confirmFill",
-                args: [p.id, reportedEntry6, fill.oid],
+                ...(useAdapter ? adapter! : vault),
+                ...(attested
+                  ? {
+                      functionName: "confirmFillAttested",
+                      args: [p.id, entry6, fill.oid, attested.signature],
+                    }
+                  : { functionName: "confirmFill", args: [p.id, entry6, fill.oid] }),
                 gas: TX_GAS,
                 chain: null,
               });
               await waitMined(hash, p.id, [S.Open]); // hold the lock until it mines
               fillFailures.delete(idStr);
-              log(p.id, `OPEN  ${key} ${p.isLong ? "long" : "short"} @ ${fmt6(fill.price6)} (${fill.venue ?? exchange.name}) tx ${hash.slice(0, 10)}`);
+              log(p.id, `OPEN  ${key} ${p.isLong ? "long" : "short"} @ ${fmt6(entry6)}${attested ? " [tee-attested]" : ""} (${fill.venue ?? exchange.name}) tx ${hash.slice(0, 10)}`);
               attester?.enqueue(p.id, fill.oid); // receipt path, off the hot path
             } catch (confirmErr) {
               // The exchange filled but the on-chain confirm failed (band
@@ -498,7 +560,7 @@ async function main() {
             unwound.add(idStr); // the venue leg is flat from here on
             const reportedExit6 = await clampToOracle(key, p.id, fill.price6, !p.isLong);
             const hash = await wallet.writeContract({
-              ...vault,
+              ...(await relay()),
               functionName: "confirmClose",
               args: [p.id, reportedExit6],
               gas: TX_GAS,
@@ -538,7 +600,7 @@ async function main() {
                   // race then leaves the hedge intact rather than the
                   // position naked.
                   const hash = await wallet.writeContract({
-                    ...vault,
+                    ...(await relay()),
                     functionName: "executeTrigger",
                     args: [p.id, mark],
                     gas: TX_GAS,
@@ -585,7 +647,7 @@ async function main() {
               try {
                 const mark = await markPrice6(key);
                 const hash = await wallet.writeContract({
-                  ...vault,
+                  ...(await relay()),
                   functionName: "liquidate",
                   args: [p.id, mark],
                   gas: TX_GAS,
