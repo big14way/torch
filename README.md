@@ -12,7 +12,7 @@
 
 Check that claim before reading further: call [`TorchVaultV2.executor()`](https://coston2-explorer.flare.network/address/0x8d9A6a11BcC64CC36e54b22ACa68865d759fa6Bd#readContract). It returns `0xad5b7703…` — the [TorchTeeExecutor](https://coston2-explorer.flare.network/address/0xad5b7703C5E201DAE04D3F41D4338fAa93eA641f) adapter, not an operator key.
 
-**Traction, all on-chain:** two Paper Perps League seasons. The retired v1 vault holds 28 depositor wallets, 26 traders and **221 positions** (`positionsCount()` on [`0x7fC640Bd…`](https://coston2-explorer.flare.network/address/0x7fC640Bd0e635a6AFc3B437e80f0DE192f6FA0BA#readContract)). The live v2 vault is at **22** and counting.
+**Traction, all on-chain:** two Paper Perps League seasons. The retired v1 vault holds 28 depositor wallets, 26 traders and **221 positions** (`positionsCount()` on [`0x7fC640Bd…`](https://coston2-explorer.flare.network/address/0x7fC640Bd0e635a6AFc3B437e80f0DE192f6FA0BA#readContract)). The live v2 vault is at **25** and counting (`positionsCount()`, indices 0–24).
 
 ---
 

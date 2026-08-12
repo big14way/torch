@@ -112,7 +112,14 @@ const CONSUMER_ABI = [
 
 export interface AttestStats {
   queued: number;
+  /** Attestations this process landed. Resets on restart — see `bound`. */
   landed: number;
+  /** Positions confirmed bound on-chain, whether this process did it or an
+   * earlier one did. This is the number that answers "is the FDC path
+   * working", because `landed` resets every restart and the enclave restarts
+   * on every deploy. The site links this endpoint as proof, and it was
+   * reporting 2 while the chain held 14. */
+  bound: number;
   failed: number;
   lastTx: string | null;
   lastError: string | null;
@@ -133,7 +140,7 @@ export function startAttester(opts: {
   log: (id: bigint, msg: string) => void;
 }) {
   const { pub, wallet, account, consumer, verifierKey, log } = opts;
-  const stats: AttestStats = { queued: 0, landed: 0, failed: 0, lastTx: null, lastError: null };
+  const stats: AttestStats = { queued: 0, landed: 0, bound: 0, failed: 0, lastTx: null, lastError: null };
   const queue: Job[] = [];
   let running = false;
 
@@ -154,7 +161,10 @@ export function startAttester(opts: {
       args: [job.positionId],
     })) as bigint;
     if (bound !== 0n) {
-      log(job.positionId, `attest: already bound (oid ${bound}), skipping`);
+      // Already proved, by us or by a previous process. Count it: skipping the
+      // work is not the same as the work not having happened.
+      stats.bound += 1;
+      log(job.positionId, `attest: already bound (oid ${bound}), counted`);
       return;
     }
 
@@ -327,6 +337,7 @@ export function startAttester(opts: {
     });
     await pub.waitForTransactionReceipt({ hash: attHash, timeout: 120_000, pollingInterval: 5_000 });
     stats.landed += 1;
+    stats.bound += 1;
     stats.lastTx = attHash;
     log(job.positionId, `ATTESTED position -> oid ${job.oid}, tx ${attHash.slice(0, 10)}`);
   }
