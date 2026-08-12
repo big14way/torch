@@ -1,0 +1,73 @@
+# The FCE stack, off a developer machine.
+#
+# Why this file exists: with the vault gated on the enclave signature, a laptop
+# going to sleep stops traders opening positions. Exits, stops and liquidations
+# keep working (they need no signature) and margin is never stuck — cancelRequest
+# is trader-callable — but "can't open" is not a state to be in during judging.
+#
+# Nothing here carries a credential. The proxy renders its config from the
+# environment at boot (see proxy-entrypoint.sh), so the same images run locally
+# and on a host.
+#
+#   docker compose -f docker-compose.hosted.yaml up -d
+#
+# Required environment (see .env.hosted.example):
+#   DB_HOST DB_USER DB_PASS   — Flare indexer, from the hackathon credentials
+#   PROXY_PRIVATE_KEY         — proxy identity
+#   INITIAL_OWNER             — TEE governance signer (the deployer)
+#   HL_API_URL                — Hyperliquid endpoint the enclave reads
+#
+# After it is up, the enclave key is NEW: register it and pause the old machine,
+# or getRandomTeeIds will route instructions to a container that no longer
+# exists. See ../README.md, "Known operational trap".
+
+services:
+  redis:
+    image: redis:7-alpine
+    command: redis-server --save "" --appendonly no
+    restart: unless-stopped
+    tmpfs:
+      - /data
+
+  ext-proxy:
+    image: ghcr.io/big14way/torch-tee-proxy:latest
+    restart: unless-stopped
+    environment:
+      - DB_HOST=${DB_HOST}
+      - DB_USER=${DB_USER}
+      - DB_PASS=${DB_PASS}
+      - REDIS_ADDR=redis:6379
+      - PROXY_PRIVATE_KEY=${PROXY_PRIVATE_KEY}
+    ports:
+      # 6664 is the public face: Flare's data providers reach the extension
+      # through it, and it is the URL registered on-chain for this machine.
+      - "${EXT_PROXY_EXTERNAL_BIND:-0.0.0.0:6674}:6664"
+      - "${EXT_PROXY_INTERNAL_BIND:-127.0.0.1:6673}:6663"
+    depends_on:
+      - redis
+
+  extension-tee:
+    image: ghcr.io/big14way/torch-fce-extension:latest
+    restart: unless-stopped
+    environment:
+      - MODE=${MODE:-1}
+      - CHAIN_ID=114
+      - CHAIN_URL=${CHAIN_URL:-https://coston2-api.flare.network/ext/C/rpc}
+      - INITIAL_OWNER=${INITIAL_OWNER}
+      - GOVERNANCE_SIGNERS=${GOVERNANCE_SIGNERS:-${INITIAL_OWNER}}
+      - GOVERNANCE_THRESHOLD=${GOVERNANCE_THRESHOLD:-1}
+      - PROXY_URL=http://ext-proxy:6663
+      - CONFIG_PORT=5501
+      - SIGN_PORT=7701
+      - EXTENSION_PORT=7702
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - SIMULATED_TEE=${SIMULATED_TEE:-true}
+      - HL_API_URL=${HL_API_URL:-https://api.hyperliquid-testnet.xyz}
+    ports:
+      # The agent posts fill-attestation requests here directly. Safe to expose:
+      # the enclave reads the fill from the exchange itself, so it will only ever
+      # sign something that happened. Exposing it lets anyone reproduce our
+      # numbers; it does not let anyone forge one.
+      - "${EXTENSION_BIND:-0.0.0.0:7702}:7702"
+    depends_on:
+      - ext-proxy
