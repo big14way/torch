@@ -195,6 +195,17 @@ async function main() {
   // Bounded, then parked and reported — the trader can always cancelRequest and
   // take their margin back, which is why stalling is safe but silence is not.
   const attestFailures = new Map<string, number>();
+  /** Client order id for the CLOSING leg of a position. Bit 64 distinguishes it
+   *  from the opening cloid, which uses the same low bits, so recovery can never
+   *  mistake an open for a close. Deterministic per position, so a retry after a
+   *  slow on-chain confirm re-finds the close it already placed.
+   *
+   *  Deliberately NOT used by the hedge-unwind paths. An unwind fires straight
+   *  after a failed confirm and is a different action from the user's close;
+   *  sharing an id would let a later close "recover" the unwind's fill and
+   *  leave the hedge open, which is worse than the duplicate it prevents. */
+  const closeCloid = (id: bigint) =>
+    ("0x" + ((1n << 64n) | (id + 1n)).toString(16).padStart(32, "0")) as string;
   const MAX_ATTEST_ATTEMPTS = 10;
   async function attestedMode(): Promise<boolean> {
     if (!adapter || !teeAttestor) return false;
@@ -576,7 +587,7 @@ async function main() {
           if (inFlight.has(idStr)) continue; // close already in flight
           inFlight.add(idStr);
           try {
-            const fill = await exchange.close(key, p.isLong, p.sizeUsd6);
+            const fill = await exchange.close(key, p.isLong, p.sizeUsd6, closeCloid(p.id));
             unwound.add(idStr); // the venue leg is flat from here on
             const reportedExit6 = await clampToOracle(key, p.id, fill.price6, !p.isLong);
             const hash = await wallet.writeContract({

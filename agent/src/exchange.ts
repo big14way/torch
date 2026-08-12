@@ -42,7 +42,7 @@ export interface Exchange {
    * restart. */
   open(market: string, isLong: boolean, sizeUsd6: bigint, cloid?: string): Promise<Fill>;
   /** Close the mirrored position. */
-  close(market: string, isLong: boolean, sizeUsd6: bigint): Promise<Fill>;
+  close(market: string, isLong: boolean, sizeUsd6: bigint, cloid?: string): Promise<Fill>;
 }
 
 // ---------------------------------------------------------------------------
@@ -57,7 +57,7 @@ export class MockExchange implements Exchange {
     return { price6, oid: this.nextOid++ };
   }
 
-  async close(market: string): Promise<Fill> {
+  async close(market: string, _isLong?: boolean, _sizeUsd6?: bigint, _cloid?: string): Promise<Fill> {
     const price6 = await this.markPrice6(market);
     return { price6, oid: this.nextOid++ };
   }
@@ -232,9 +232,18 @@ export class HyperliquidTestnet implements Exchange {
     return this.requireFullFill(this.readFill(result, "open", szNum), market, isLong, "open");
   }
 
-  async close(market: string, isLong: boolean, sizeUsd6: bigint): Promise<Fill> {
+  async close(market: string, isLong: boolean, sizeUsd6: bigint, cloid?: string): Promise<Fill> {
     const meta = await this.assetMeta(HL_COIN[market]);
     if (!meta) return this.fallbackFill(market);
+    // Same idempotency the open path has. A close carried no client order id at
+    // all, so a slow on-chain confirm could send the agent round again and place
+    // a second closing order — it drifted the BTC hedge $51 during testing. It
+    // cannot compound the way duplicate opens did (a close only ever offsets),
+    // but it is the same bug and it gets the same guard.
+    if (cloid) {
+      const prior = await this.findFillByCloid(cloid);
+      if (prior) return prior;
+    }
     this.requireMinNotional(sizeUsd6);
     const client = await this.client();
     const mid6 = await this.mid6(market);
@@ -267,6 +276,7 @@ export class HyperliquidTestnet implements Exchange {
           s: sz,
           r: reducing,
           t: { limit: { tif: "Ioc" } },
+          ...(cloid ? { c: cloid } : {}),
         },
       ],
       grouping: "na",
