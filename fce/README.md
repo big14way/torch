@@ -63,7 +63,7 @@ in one.
 |---|---|
 | Extension id | **66154** |
 | TorchInstructionSender | [`0x88d0c142844C418ae27e9B4bd730376ee7F3799b`](https://coston2-explorer.flare.network/address/0x88d0c142844C418ae27e9B4bd730376ee7F3799b) |
-| TorchTeeExecutor (adapter) | [`0xad5b7703C5E201DAE04D3F41D4338fAa93eA641f`](https://coston2-explorer.flare.network/address/0xad5b7703C5E201DAE04D3F41D4338fAa93eA641f) |
+| TorchTeeExecutor (adapter) | [`0x321f606ed6cd64C2478F18053cFAb4ec1B0261de`](https://coston2-explorer.flare.network/address/0x321f606ed6cd64C2478F18053cFAb4ec1B0261de) |
 | TorchVaultV2 (guarded) | [`0x8d9A6a11BcC64CC36e54b22ACa68865d759fa6Bd`](https://coston2-explorer.flare.network/address/0x8d9A6a11BcC64CC36e54b22ACa68865d759fa6Bd) |
 | FlareTeeManager | `0x1a9C4A0f9D76c0b1D91d22E24E573a9b377618aE` |
 
@@ -94,6 +94,23 @@ is kept for the record — it shows the signature recovery, the registry lookup
 and the replay burn in isolation — and can be reproduced with
 [`scripts/proveTeeSignature.ts`](../contracts/scripts/proveTeeSignature.ts).
 The live vault has since done the same thing for real, which is the run above.
+
+## Markets the venue does not list
+
+Hyperliquid testnet does not list XRP, so those orders never reach a venue:
+no fill, no order id, nothing for the enclave to look up. Gating the vault
+without a path for them would have stranded every XRP position — the enclave
+rightly refuses to sign for an order id of zero.
+
+The answer is not to let the operator name a price instead.
+`TorchTeeExecutor.confirmFillAtOracle(id)` takes a position id and **no price
+argument**: the contract reads FTSOv2 itself and settles there. That is
+strictly less discretion than the attested path, where the operator at least
+chooses which signed fill to submit.
+
+So across both paths there is **no market on which the operator picks the entry
+price** — on venue-routed markets the enclave signs it, and everywhere else the
+contract reads it.
 
 ## Two keys, two different jobs
 

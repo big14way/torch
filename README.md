@@ -10,7 +10,7 @@
 
 **What Torch does about it.** As of Aug 12 2026, on venue-routed markets, an entry price cannot reach the vault unless a **Flare Confidential Compute enclave signed it** after reading the fill on the exchange itself — and the vault's adapter checks that signer against `FlareTeeManager.getActiveTeeMachines(66154)` on every single call. The operator's agent still sends the transaction and pays the gas. It can no longer choose the number inside it.
 
-Check that claim before reading further: call [`TorchVaultV2.executor()`](https://coston2-explorer.flare.network/address/0x8d9A6a11BcC64CC36e54b22ACa68865d759fa6Bd#readContract). It returns `0xad5b7703…` — the [TorchTeeExecutor](https://coston2-explorer.flare.network/address/0xad5b7703C5E201DAE04D3F41D4338fAa93eA641f) adapter, not an operator key.
+Check that claim before reading further: call [`TorchVaultV2.executor()`](https://coston2-explorer.flare.network/address/0x8d9A6a11BcC64CC36e54b22ACa68865d759fa6Bd#readContract). It returns `0xad5b7703…` — the [TorchTeeExecutor](https://coston2-explorer.flare.network/address/0x321f606ed6cd64C2478F18053cFAb4ec1B0261de) adapter, not an operator key.
 
 **Traction, all on-chain:** two Paper Perps League seasons. The retired v1 vault holds 28 depositor wallets, 26 traders and **221 positions** (`positionsCount()` on [`0x7fC640Bd…`](https://coston2-explorer.flare.network/address/0x7fC640Bd0e635a6AFc3B437e80f0DE192f6FA0BA#readContract)). The live v2 vault is at **25** and counting (`positionsCount()`, indices 0–24).
 
@@ -120,7 +120,7 @@ Five Flare protocols, each load-bearing. Remove any one and something concrete b
 | Contract | Address |
 |---|---|
 | **TorchVaultV2** — margin, positions, PnL, insurance fund | [`0x8d9A6a11BcC64CC36e54b22ACa68865d759fa6Bd`](https://coston2-explorer.flare.network/address/0x8d9A6a11BcC64CC36e54b22ACa68865d759fa6Bd#code) *(source-verified)* |
-| **TorchTeeExecutor** — the vault's executor; verifies enclave signatures, clamps to FTSO | [`0xad5b7703C5E201DAE04D3F41D4338fAa93eA641f`](https://coston2-explorer.flare.network/address/0xad5b7703C5E201DAE04D3F41D4338fAa93eA641f) |
+| **TorchTeeExecutor** — the vault's executor; verifies enclave signatures, clamps to FTSO | [`0x321f606ed6cd64C2478F18053cFAb4ec1B0261de`](https://coston2-explorer.flare.network/address/0x321f606ed6cd64C2478F18053cFAb4ec1B0261de) |
 | **TorchInstructionSender** — on-chain FCE entry point, permissionless | [`0x88d0c142844C418ae27e9B4bd730376ee7F3799b`](https://coston2-explorer.flare.network/address/0x88d0c142844C418ae27e9B4bd730376ee7F3799b) |
 | **FCE machine** (extension `66154`) | `0xc38Ae007ffe51Ff90f4B94d4F78BdbCa74241290` — from [`FlareTeeManager`](https://coston2-explorer.flare.network/address/0x1a9C4A0f9D76c0b1D91d22E24E573a9b377618aE#readContract) |
 | **FtsoV2Reader** — resolves FTSOv2 through `ContractRegistry` on every read | [`0xF8be9ca7bCb07B0e87BDcEAB28841fF6A16E7D01`](https://coston2-explorer.flare.network/address/0xF8be9ca7bCb07B0e87BDcEAB28841fF6A16E7D01#code) *(source-verified)* |
