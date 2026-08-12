@@ -173,6 +173,43 @@ describe("TorchTeeExecutor", () => {
     );
   });
 
+  // Hyperliquid does not list XRP, so those fills have no order id and the
+  // enclave rightly refuses to sign for one. Without this path, gating the vault
+  // strands every position on the market the product is named after.
+  describe("markets the venue does not list", () => {
+    it("settles at the oracle price the contract reads, with no caller input", async () => {
+      const { adapter, vault, oracle, agent } = await loadFixture(fixture);
+      await oracle.set(PRICE6, 6);
+      await adapter.connect(agent).confirmFillAtOracle(ID);
+      expect(await vault.lastEntryPrice6()).to.equal(PRICE6);
+      expect(await vault.lastOid()).to.equal(0n);
+    });
+
+    it("takes no price argument at all — the operator cannot name one", async () => {
+      const { adapter } = await loadFixture(fixture);
+      const frag = adapter.interface.getFunction("confirmFillAtOracle");
+      expect(frag!.inputs.length).to.equal(1);
+      expect(frag!.inputs[0].type).to.equal("uint256");
+    });
+
+    it("reverts rather than settling at zero when the oracle is unusable", async () => {
+      const { adapter, oracle, agent } = await loadFixture(fixture);
+      await oracle.set(0, 6);
+      await expect(adapter.connect(agent).confirmFillAtOracle(ID)).to.be.revertedWithCustomError(
+        adapter,
+        "NoOraclePrice"
+      );
+    });
+
+    it("is agent-only, like every other path", async () => {
+      const { adapter, stranger } = await loadFixture(fixture);
+      await expect(adapter.connect(stranger).confirmFillAtOracle(ID)).to.be.revertedWithCustomError(
+        adapter,
+        "NotAgent"
+      );
+    });
+  });
+
   it("refuses to confirm at all while no machine is attested for the extension", async () => {
     const { adapter, registry, agent, sign } = await loadFixture(fixture);
     const sig = await sign(ID, PRICE6, OID);

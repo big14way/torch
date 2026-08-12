@@ -32,6 +32,11 @@
   },
   {
     "inputs": [],
+    "name": "NoOraclePrice",
+    "type": "error"
+  },
+  {
+    "inputs": [],
     "name": "NotAgent",
     "type": "error"
   },
@@ -61,6 +66,25 @@
       }
     ],
     "name": "AgentUpdated",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "id",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "settledPrice6",
+        "type": "uint256"
+      }
+    ],
+    "name": "FillConfirmedAtOracle",
     "type": "event"
   },
   {
@@ -179,6 +203,19 @@
       }
     ],
     "name": "confirmClose",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "id",
+        "type": "uint256"
+      }
+    ],
+    "name": "confirmFillAtOracle",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"

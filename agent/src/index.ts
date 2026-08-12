@@ -510,6 +510,25 @@ async function main() {
             // loudly instead of being nudged into range.
             const useAdapter = await attestedMode();
             let attested: Attestation | null = null;
+            // A fill with no exchange order id never reached a venue — the
+            // market is not listed there (XRP). There is nothing to attest, and
+            // the enclave correctly refuses to sign for an oid of zero, so the
+            // attested path would strand this position forever. The adapter
+            // settles it at the oracle price IT reads, taking no number from us.
+            if (useAdapter && fill.oid === 0n) {
+              const hash = await wallet.writeContract({
+                ...adapter!,
+                functionName: "confirmFillAtOracle",
+                args: [p.id],
+                gas: TX_GAS,
+                chain: null,
+              });
+              await waitMined(hash, p.id, [S.Open]);
+              fillFailures.delete(idStr);
+              attestFailures.delete(idStr);
+              log(p.id, `OPEN  ${key} ${p.isLong ? "long" : "short"} @ oracle [no venue] tx ${hash.slice(0, 10)}`);
+              continue;
+            }
             if (useAdapter) {
               attested = await teeAttestor!.attest(p.id, fill.oid);
               if (!attested) {

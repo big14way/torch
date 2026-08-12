@@ -79,6 +79,8 @@ contract TorchTeeExecutor {
     mapping(uint64 => bool) public oidUsed;
 
     event AgentUpdated(address agent);
+    /// @param settledPrice6 the oracle price the CONTRACT read; no caller input
+    event FillConfirmedAtOracle(uint256 indexed id, uint256 settledPrice6);
     /// @param attestedPrice6 what the enclave saw on the venue
     /// @param settledPrice6 what the vault stored, after the oracle clamp
     event FillConfirmedFromTee(
@@ -94,6 +96,7 @@ contract TorchTeeExecutor {
     error BadSignature();
     error OidAlreadyUsed();
     error ZeroAddress();
+    error NoOraclePrice();
 
     modifier onlyOwner() {
         if (msg.sender != owner) revert NotOwner();
@@ -210,6 +213,29 @@ contract TorchTeeExecutor {
         } catch {
             return 0;
         }
+    }
+
+    /// @notice Settle a fill that has no exchange order id.
+    ///
+    /// @dev Hyperliquid does not list every market Torch offers — XRP among
+    /// them — so those orders never reach a venue and there is no fill, no
+    /// order id, and nothing for the enclave to look up. Gating the vault
+    /// without this path would strand every such position: the enclave
+    /// correctly refuses to sign for an order id of zero, and the request would
+    /// sit unfilled until the trader cancelled.
+    ///
+    /// The answer is not to let the operator name a price instead. The contract
+    /// reads FTSOv2 itself and settles there, so the caller supplies NO number
+    /// at all — strictly less discretion than the attested path, where the
+    /// operator at least chooses which signed fill to submit. Between the two,
+    /// there is no market on which the operator picks the entry price.
+    function confirmFillAtOracle(uint256 id) external onlyAgent {
+        ITorchVault.Position memory p = VAULT.getPosition(id);
+        (bytes21 feedId, , ) = VAULT.markets(p.market);
+        uint256 px6 = _oraclePrice6(feedId);
+        if (px6 == 0) revert NoOraclePrice();
+        emit FillConfirmedAtOracle(id, px6);
+        VAULT.confirmFill(id, px6, 0);
     }
 
     /// @notice True when Flare currently attests this address as a PRODUCTION
