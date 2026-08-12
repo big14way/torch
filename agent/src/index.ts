@@ -191,6 +191,11 @@ async function main() {
   // takes effect within seconds — including the rollback direction.
   let modeCache: { at: number; on: boolean } | undefined;
   const MODE_TTL_MS = 15_000;
+  // A position whose fill the enclave will not attest must not spin forever.
+  // Bounded, then parked and reported — the trader can always cancelRequest and
+  // take their margin back, which is why stalling is safe but silence is not.
+  const attestFailures = new Map<string, number>();
+  const MAX_ATTEST_ATTEMPTS = 10;
   async function attestedMode(): Promise<boolean> {
     if (!adapter || !teeAttestor) return false;
     const now = Date.now();
@@ -259,6 +264,10 @@ async function main() {
         ? { address: builderAddr, feeTenthBps: Number(process.env.HL_BUILDER_FEE_TENTH_BPS || 50) }
         : undefined
     );
+    // Fail fast if we cannot see the book we trade on. Reconciling open orders
+    // against the wrong account is invisible at runtime and places a duplicate
+    // order every retry; it cost 66 orders on Aug 6 before anyone noticed.
+    await (exchange as HyperliquidTestnet).assertAccountReadable();
     console.log(
       `  Routing orders to Hyperliquid testnet${builderAddr ? ` (builder code ${builderAddr.slice(0, 8)}…)` : ""}. Smoke-test before demos.`
     );
@@ -493,13 +502,24 @@ async function main() {
             if (useAdapter) {
               attested = await teeAttestor!.attest(p.id, fill.oid);
               if (!attested) {
-                // Not a failure — the enclave has not seen this fill yet, or is
-                // briefly unreachable. Leave the position Requested and retry;
-                // the cloid is deterministic per attempt, so the next pass
-                // re-finds THIS fill rather than opening a second one.
-                log(p.id, `enclave has not attested oid ${fill.oid}; leaving Requested to retry`);
+                // The enclave has not seen this fill yet, or is briefly
+                // unreachable. Safe to come back: open() reconciles against the
+                // exchange by cloid first, so the next pass recovers THIS fill
+                // rather than placing another order. That reconciliation was
+                // broken until Aug 12 — it queried the API wallet, which owns
+                // no fills — which is how this path once placed 38 orders for
+                // one position. It is load-bearing here; do not weaken it.
+                const n = (attestFailures.get(idStr) ?? 0) + 1;
+                attestFailures.set(idStr, n);
+                if (n >= MAX_ATTEST_ATTEMPTS) {
+                  log(p.id, `enclave never attested oid ${fill.oid} after ${n} tries; parked (cancelRequest refunds)`);
+                  fillFailures.set(idStr, MAX_FILL_ATTEMPTS); // park + surface in status
+                } else {
+                  log(p.id, `enclave has not attested oid ${fill.oid} (${n}/${MAX_ATTEST_ATTEMPTS}); retrying`);
+                }
                 continue;
               }
+              attestFailures.delete(idStr);
             }
             const entry6 = attested ? attested.entryPrice6 : reportedEntry6;
             try {

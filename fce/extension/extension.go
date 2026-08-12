@@ -233,9 +233,38 @@ func fetchAllFills() (map[uint64]hlFill, error) {
 	if err := json.Unmarshal(raw, &fills); err != nil {
 		return nil, fmt.Errorf("decoding fills: %w", err)
 	}
+	// One order can fill in several legs, each its own entry under the same
+	// oid. Keying the map straight off Oid kept whichever leg came last, so the
+	// enclave would sign ONE leg's price for the whole position. Size-weight
+	// them instead: what the vault stores has to be what the position actually
+	// cost, not a sample of it.
 	out := make(map[uint64]hlFill, len(fills))
+	sz := make(map[uint64]*big.Float, len(fills))
+	ntl := make(map[uint64]*big.Float, len(fills))
 	for i := range fills {
-		out[fills[i].Oid] = fills[i]
+		f := fills[i]
+		lsz, okS := new(big.Float).SetString(f.Sz)
+		lpx, okP := new(big.Float).SetString(f.Px)
+		if !okS || !okP || lsz.Sign() <= 0 {
+			continue
+		}
+		if _, seen := out[f.Oid]; !seen {
+			out[f.Oid] = f
+			sz[f.Oid] = new(big.Float)
+			ntl[f.Oid] = new(big.Float)
+		}
+		sz[f.Oid].Add(sz[f.Oid], lsz)
+		ntl[f.Oid].Add(ntl[f.Oid], new(big.Float).Mul(lsz, lpx))
+	}
+	for oid, total := range sz {
+		if total.Sign() <= 0 {
+			continue
+		}
+		vwap := new(big.Float).Quo(ntl[oid], total)
+		agg := out[oid]
+		agg.Px = vwap.Text('f', 8)
+		agg.Sz = total.Text('f', 8)
+		out[oid] = agg
 	}
 	return out, nil
 }
@@ -270,15 +299,53 @@ func (e *Extension) refreshLoop() {
 	}
 }
 
-// lookup answers from the warm cache. Returns (fill, known) where known is
-// false only when we have never successfully reached the exchange.
+// maxCacheAge bounds how old a view may be before "not in the cache" stops
+// meaning "did not happen". fillsAt was only ever checked for being zero, so a
+// single successful fetch made the enclave claim a fresh view forever.
+const maxCacheAge = 90 * time.Second
+
+// lookup answers from the warm cache, then falls back to a live fetch.
+//
+// The cache alone is not enough for the vault to be gated on this: it refreshes
+// every ~24s, so a fill the agent just placed is legitimately absent, and the
+// enclave answers "no such fill" about a fill that certainly happened. On a
+// miss we therefore go and look. Hits still answer from the cache, so the warm
+// path — which is what the handler deadline was tuned for — is unchanged, and
+// only a genuine miss pays the ~4s round trip.
 func (e *Extension) lookup(oid uint64) (hlFill, bool, bool) {
 	e.mu.RLock()
-	defer e.mu.RUnlock()
-	if e.fillsAt.IsZero() {
-		return hlFill{}, false, false // no view yet
-	}
 	f, ok := e.fills[oid]
+	at, hadView := e.fillsAt, !e.fillsAt.IsZero()
+	e.mu.RUnlock()
+
+	if ok {
+		return f, true, true
+	}
+	// A miss against a stale view is not evidence of absence either.
+	if hadView && time.Since(at) < maxCacheAge {
+		if f2, ok2, fresh := e.liveLookup(oid); fresh {
+			return f2, ok2, true
+		}
+		return hlFill{}, false, true
+	}
+	f2, ok2, fresh := e.liveLookup(oid)
+	return f2, ok2, fresh || hadView
+}
+
+// liveLookup refetches on demand and folds the result back into the cache.
+// Returns (fill, found, reachedExchange).
+func (e *Extension) liveLookup(oid uint64) (hlFill, bool, bool) {
+	fills, err := fetchAllFills()
+	if err != nil {
+		e.mu.Lock()
+		e.refreshErr = err.Error()
+		e.mu.Unlock()
+		return hlFill{}, false, false
+	}
+	e.mu.Lock()
+	e.fills, e.fillsAt, e.refreshErr = fills, time.Now(), ""
+	e.mu.Unlock()
+	f, ok := fills[oid]
 	return f, ok, true
 }
 

@@ -28,6 +28,10 @@ export interface Fill {
   szFilled?: number;
   /** Size we asked for, so callers can judge how short a partial came up. */
   szRequested?: number;
+  /** True when this came from reconciling against the exchange rather than
+   * from an order we just placed. A free-text venue string is not a contract;
+   * callers that care whether real money just moved need a flag. */
+  recovered?: boolean;
 }
 
 export interface Exchange {
@@ -70,9 +74,17 @@ const HL_COIN: Record<string, string> = {
   DOGE: "DOGE",
 };
 
+/** The Hyperliquid MASTER account that owns Torch's fills. The signing key is
+ *  an API wallet, which owns none — see findFillByCloid. Pinned to the same
+ *  address as attest.ts and the FCE extension so all three agree on whose book
+ *  is being read; overridable only for testing against another account. */
+export const HL_MASTER_ACCOUNT =
+  process.env.HL_ACCOUNT || "0xfDb941fe97e13B599BC576c4142128aB97D01622";
+
 export class HyperliquidTestnet implements Exchange {
   name = "hyperliquid-testnet";
   private sdkClient: any | null = null;
+  private readonly account = HL_MASTER_ACCOUNT;
 
   constructor(
     private apiUrl: string,
@@ -86,6 +98,31 @@ export class HyperliquidTestnet implements Exchange {
     // The paying account must approve it once via approveBuilderFee.
     private builder?: { address: `0x${string}`; feeTenthBps: number }
   ) {}
+
+  /** Assert at boot that we are reading the book we are trading on.
+   *
+   * The whole duplicate-order incident reduces to querying an account with no
+   * fills. That is one HTTP call to detect: the API wallet reports
+   * accountValue 0, the master reports the real balance. Cheap, decisive, and
+   * it fails loudly instead of silently placing a second order a week later. */
+  async assertAccountReadable(): Promise<void> {
+    const res = await fetch(`${this.apiUrl}/info`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ type: "clearinghouseState", user: this.account }),
+    });
+    if (!res.ok) throw new Error(`clearinghouseState failed: HTTP ${res.status}`);
+    const st = (await res.json()) as any;
+    const value = parseFloat(st?.marginSummary?.accountValue ?? "0");
+    if (!(value > 0)) {
+      throw new Error(
+        `HL account ${this.account} reports accountValue ${value}. This is the address whose ` +
+          `fills reconcile open orders; if it is the API wallet rather than the master, cloid ` +
+          `recovery silently fails and every retry places a duplicate order. Set HL_ACCOUNT.`
+      );
+    }
+    console.log(`[exchange] reconciling against HL account ${this.account} (accountValue ${value})`);
+  }
 
   /** The builder field for an order payload, when configured. */
   private builderField(): { b: `0x${string}`; f: number } | undefined {
@@ -149,8 +186,27 @@ export class HyperliquidTestnet implements Exchange {
     // memory. Ask the exchange whether this position already has a fill before
     // placing anything.
     if (cloid) {
+      // Fail CLOSED. If this lookup throws we do not know whether this position
+      // already has a fill, and placing another order is precisely the bug this
+      // guard exists to prevent. Let it propagate: the caller treats it as a
+      // failed attempt and retries later, which is recoverable. A duplicate
+      // naked position is not.
       const prior = await this.findFillByCloid(cloid);
-      if (prior) return prior;
+      if (prior) {
+        // Recovered fills used to return straight out of here, skipping the
+        // partial-fill check and carrying no szRequested — so a half-filled
+        // recovery was reported on-chain at full notional and the remainder
+        // became unhedged exposure. Size it the same way a fresh order is.
+        const wantSz = parseFloat(
+          (Number(sizeUsd6) / Number(await this.mid6(market))).toFixed(meta.szDecimals)
+        );
+        return this.requireFullFill(
+          { ...prior, szRequested: wantSz },
+          market,
+          isLong,
+          "open"
+        );
+      }
     }
     this.requireMinNotional(sizeUsd6);
     const client = await this.client();
@@ -203,32 +259,72 @@ export class HyperliquidTestnet implements Exchange {
 
   /** Look for an existing fill carrying this client order id. Makes open()
    * idempotent across a restart: the exchange, not our memory, is the record
-   * of what we already did. */
+   * of what we already did.
+   *
+   * This asks about HL_ACCOUNT, the MASTER account. It used to derive the
+   * address from the signing key, which is an API wallet — and on Hyperliquid
+   * an API wallet owns no fills, they belong to the master. So the query always
+   * hit an account with zero fills, always returned undefined, and open()
+   * always placed another order. Recovery never worked once: 66 duplicate
+   * orders for position 0 on Aug 6, 28 for #17, 38 for #18. The two other
+   * userFills callers in this repo (attest.ts, extension.go) already pin the
+   * master, which is what made the bug findable. */
   private async findFillByCloid(cloid: string): Promise<Fill | undefined> {
-    try {
-      const { privateKeyToAccount } = await import("viem/accounts");
-      const user = privateKeyToAccount(this.privateKey as `0x${string}`).address;
-      const res = await fetch(`${this.apiUrl}/info`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ type: "userFills", user }),
-      });
-      if (!res.ok) return undefined;
-      const fills = (await res.json()) as Array<Record<string, any>>;
-      if (!Array.isArray(fills)) return undefined;
-      const hit = fills.find((f) => f.cloid === cloid);
-      if (!hit) return undefined;
-      return {
-        price6: BigInt(Math.round(parseFloat(hit.px) * 1e6)),
-        oid: BigInt(hit.oid ?? 0),
-        venue: "hyperliquid-testnet (recovered by cloid)",
-        szFilled: hit.sz !== undefined ? parseFloat(hit.sz) : undefined,
-      };
-    } catch {
-      // Never let a reconciliation lookup block trading; the caller's retry
-      // cap bounds the damage if this is wrong.
+    const res = await fetch(`${this.apiUrl}/info`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ type: "userFills", user: this.account }),
+    });
+    if (!res.ok) throw new Error(`userFills lookup failed: HTTP ${res.status}`);
+    const fills = (await res.json()) as Array<Record<string, any>>;
+    if (!Array.isArray(fills)) throw new Error("userFills returned a non-array");
+
+    const matches = fills.filter((f) => f.cloid === cloid);
+    if (matches.length === 0) {
+      console.log(`[exchange] no prior fill for cloid ${cloid}; placing a new order`);
       return undefined;
     }
+
+    // Group by OID, not by cloid. One ORDER can fill in several legs sharing an
+    // oid, and those must be size-weighted or we report one leg's price for the
+    // whole position. But SEPARATE orders under the same cloid — exactly what
+    // the broken recovery produced, 38 of them for position #18 — each carry
+    // their own oid, and summing across those would claim 38x the size actually
+    // requested. Take the most recent order; aggregate only its legs.
+    let newestOid = 0n;
+    let newestTime = -1;
+    for (const m of matches) {
+      const t = Number(m.time ?? 0);
+      if (t >= newestTime) {
+        newestTime = t;
+        newestOid = BigInt(m.oid ?? 0);
+      }
+    }
+    let sz = 0;
+    let notional = 0;
+    let legs = 0;
+    for (const l of matches) {
+      if (BigInt(l.oid ?? 0) !== newestOid) continue;
+      const lsz = parseFloat(l.sz ?? "0");
+      const lpx = parseFloat(l.px ?? "0");
+      if (!(lsz > 0) || !(lpx > 0)) continue;
+      sz += lsz;
+      notional += lsz * lpx;
+      legs++;
+    }
+    if (!(sz > 0)) return undefined;
+    if (matches.length > legs) {
+      console.log(
+        `[exchange] cloid ${cloid}: ${matches.length} fills across several orders; recovering only oid ${newestOid} (${legs} leg(s), sz ${sz})`
+      );
+    }
+    return {
+      price6: BigInt(Math.round((notional / sz) * 1e6)),
+      oid: newestOid,
+      venue: `hyperliquid-testnet (recovered by cloid${legs > 1 ? `, ${legs} legs` : ""})`,
+      szFilled: sz,
+      recovered: true,
+    };
   }
 
   /** Flatten `sz` asset units of an existing position. Used to undo a partial

@@ -13,7 +13,8 @@ services:
     # receipt waits, shared nonce manager. After any intentional agent change:
     # wait for CI, fetch the new digest (anonymous GHCR token flow), update
     # this line AND the IMAGE_DIGEST env below, redeploy.
-    image: ghcr.io/big14way/torch-executor@sha256:9218f1a22864dbcf24345ce1aa537728ab7f649f38d04fd3c73c5a955ba52e38
+    # Aug 12 build: routes through the FCC adapter when the vault points at it.
+    image: ghcr.io/big14way/torch-executor@sha256:a38c12f3c77a8d8a90115076f0d3e3f93a33c0dd62fa8a9a14b3ae30aee413fd
     restart: unless-stopped
     ports:
       - "80:3000"
@@ -31,6 +32,14 @@ services:
       HL_PRIVATE_KEY: ${HL_PRIVATE_KEY}
       # v2-bound consumer: enables the enclave's per-fill FDC auto-attestation.
       FDC_CONSUMER: "0xe3B21cbD82dcc4acD4BFDAC5Ee61AC1E2B9F2a6f"
+      # The FCC adapter. The agent reads vault.executor() and only routes
+      # through this once the vault actually points at it, so deploying is
+      # inert until setExecutor and the rollback needs no redeploy.
+      TEE_ADAPTER_ADDRESS: "0xad5b7703C5E201DAE04D3F41D4338fAa93eA641f"
+      # The Flare Compute Extension, hosted (not a dev machine). The agent asks
+      # it for a signed fill price; the enclave reads Hyperliquid itself, so it
+      # can only ever sign something that happened.
+      FCE_ACTION_URL: "https://torch-fce-production.up.railway.app/action"
       # Same digest the image: line pins. The TDX report binds this compose,
       # so the status endpoint can state exactly which image is attested.
-      IMAGE_DIGEST: "sha256:9218f1a22864dbcf24345ce1aa537728ab7f649f38d04fd3c73c5a955ba52e38"
+      IMAGE_DIGEST: "sha256:a38c12f3c77a8d8a90115076f0d3e3f93a33c0dd62fa8a9a14b3ae30aee413fd"
