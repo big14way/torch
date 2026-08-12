@@ -10,7 +10,7 @@
 
 **What Torch does about it.** As of Aug 12 2026, on venue-routed markets, an entry price cannot reach the vault unless a **Flare Confidential Compute enclave signed it** after reading the fill on the exchange itself — and the vault's adapter checks that signer against `FlareTeeManager.getActiveTeeMachines(66154)` on every single call. The operator's agent still sends the transaction and pays the gas. It can no longer choose the number inside it.
 
-Check that claim before reading further: call [`TorchVaultV2.executor()`](https://coston2-explorer.flare.network/address/0x8d9A6a11BcC64CC36e54b22ACa68865d759fa6Bd#readContract). It returns `0xad5b7703…` — the [TorchTeeExecutor](https://coston2-explorer.flare.network/address/0x321f606ed6cd64C2478F18053cFAb4ec1B0261de) adapter, not an operator key.
+Check that claim before reading further: call [`TorchVaultV2.executor()`](https://coston2-explorer.flare.network/address/0x8d9A6a11BcC64CC36e54b22ACa68865d759fa6Bd#readContract). It returns `0x321f606e…` — the [TorchTeeExecutor](https://coston2-explorer.flare.network/address/0x321f606ed6cd64C2478F18053cFAb4ec1B0261de) adapter, not an operator key.
 
 **Traction, all on-chain:** two Paper Perps League seasons. The retired v1 vault holds 28 depositor wallets, 26 traders and **221 positions** (`positionsCount()` on [`0x7fC640Bd…`](https://coston2-explorer.flare.network/address/0x7fC640Bd0e635a6AFc3B437e80f0DE192f6FA0BA#readContract)). The live v2 vault is at **25** and counting (`positionsCount()`, indices 0–24).
 
@@ -44,12 +44,12 @@ That attestor address is not one we wrote down. Call [`FlareTeeManager.getActive
 
 | Call | Returns | Meaning |
 |---|---|---|
-| `TorchVaultV2.executor()` | `0xad5b7703…` | entry prices go through the adapter, not an EOA |
-| `TorchTeeExecutor.agent()` | `0x972709786ef35F88F5D13D10cc27d9621E0ea560` | the same address the [Phala enclave status endpoint](https://cc1525a5ca15c4c8ef2668e72bc888f5a0c3239a.dstack-pha-prod9.phala.network) publishes as its executor |
-| `TorchTeeExecutor.oidUsed(57757222726)` | `true` | that exchange order id was consumed by an attested confirm, and can never be reused |
+| `TorchVaultV2.executor()` | `0x321f606e…` | entry prices go through the adapter, not an EOA |
+| `TorchTeeExecutor.agent()` | the address the [Phala enclave status endpoint](https://cc1525a5ca15c4c8ef2668e72bc888f5a0c3239a.dstack-pha-prod9.phala.network) publishes live as `executor` | the key rotates on every enclave deploy, so match the two reads rather than a number frozen here — they always agree |
+| `TorchTeeExecutor.oidUsed(57765415609)` | `true` | position #24's exchange order id, consumed by an attested confirm — it can never be reused |
 | `TorchVaultV2.maxDeviationBps()` | `150` | every settlement reverts more than 1.5% off the FTSOv2 feed |
 
-Earlier attested lifecycle, same shape: position **#20**, entry 63934.0, oid `57756491649` (`oidUsed` → `true`), closed. The signature-verification path is also reproducible standalone against a mock sink — [`0x341a670d…`](https://coston2-explorer.flare.network/tx/0x341a670d45dca72ff5ff164481441e4f22c53c0ffcfe014ec4c3591d143b9162), via [`scripts/proveTeeSignature.ts`](contracts/scripts/proveTeeSignature.ts) — so anyone can re-run it without touching a live position.
+Earlier attested lifecycles, same shape: positions **#20** (entry 63934.0, oid `57756491649`) and **#21** (entry 63953.0, oid `57757222726`, closed +0.39 FXRP). Those two went through the previous adapter build ([`0xad5b7703…`](https://coston2-explorer.flare.network/address/0xad5b7703C5E201DAE04D3F41D4338fAa93eA641f), replaced same-day when `confirmFillAtOracle` was added for venueless markets), so their `oidUsed` burns live on that contract — replay protection is per-build storage; the vault's stored positions are the permanent record. The signature-verification path is also reproducible standalone against a mock sink — [`0x341a670d…`](https://coston2-explorer.flare.network/tx/0x341a670d45dca72ff5ff164481441e4f22c53c0ffcfe014ec4c3591d143b9162), via [`scripts/proveTeeSignature.ts`](contracts/scripts/proveTeeSignature.ts) — so anyone can re-run it without touching a live position.
 
 ---
 

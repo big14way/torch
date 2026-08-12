@@ -67,25 +67,26 @@ in one.
 | TorchVaultV2 (guarded) | [`0x8d9A6a11BcC64CC36e54b22ACa68865d759fa6Bd`](https://coston2-explorer.flare.network/address/0x8d9A6a11BcC64CC36e54b22ACa68865d759fa6Bd) |
 | FlareTeeManager | `0x1a9C4A0f9D76c0b1D91d22E24E573a9b377618aE` |
 
-A live run against the **live vault**, end to end. Position #21 was opened on
-TorchVaultV2 and filled through the adapter:
+A live run against the **live vault**, end to end. Position #24 was opened on
+TorchVaultV2 and filled through the current adapter: the enclave read the fill
+on Hyperliquid and signed `px 63264.0`, oid `57765415609`.
 
-```json
-{"positionId":21,"oid":57757222726,"coin":"BTC","side":"Open Long",
- "px":"63953.0","found":true}
-```
-
-The vault stores exactly that. Check it yourself, and it does not expire:
+Check it yourself, and it does not expire:
 
 | Read | Returns |
 |---|---|
-| `TorchVaultV2.getPosition(21)` | `entryPrice6 = 63953000000`, `hlOid = 57757222726` |
-| `TorchTeeExecutor.oidUsed(57757222726)` | `true` — the order id is spent, so no signature can be replayed |
-| `TorchVaultV2.executor()` | `0xad5b7703…a641f`, the adapter |
+| `TorchVaultV2.getPosition(24)` | `entryPrice6 = 63264000000`, `hlOid = 57765415609` |
+| `TorchTeeExecutor.oidUsed(57765415609)` | `true` — the order id is spent, so no signature can be replayed |
+| `TorchVaultV2.executor()` | `0x321f606e…61de`, the adapter |
 
 The price the enclave signed is the price the vault stored, and the adapter that
-enforced it is the vault's executor. Both legs of #21 — open and close — landed
-inside ten seconds.
+enforced it is the vault's executor.
+
+Positions **#20** and **#21** ran the same shape earlier the same day — #21
+closed +0.39 FXRP with both legs inside ten seconds. They went through the
+previous adapter build (`0xad5b7703…`, replaced when `confirmFillAtOracle` was
+added), so their oid burns live in that contract's storage; the vault's stored
+positions are the permanent record either way.
 
 The earlier proof transaction
 [`0x341a670d…9162`](https://coston2-explorer.flare.network/tx/0x341a670d45dca72ff5ff164481441e4f22c53c0ffcfe014ec4c3591d143b9162)
