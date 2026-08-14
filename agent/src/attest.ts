@@ -152,6 +152,19 @@ export function startAttester(opts: {
       args: [name],
     }) as Promise<`0x${string}`>;
 
+  // Distinct positions confirmed bound, so re-scans do not inflate the count.
+  // The first version of this counter incremented on every sighting and the
+  // status endpoint climbed to 944 against ~20 real attestations — overstating
+  // proof is worse than the understating bug it replaced.
+  const countedBound = new Set<string>();
+  const countBound = (positionId: bigint) => {
+    const k = positionId.toString();
+    if (countedBound.has(k)) return false;
+    countedBound.add(k);
+    stats.bound = countedBound.size;
+    return true;
+  };
+
   async function attestOne(job: Job): Promise<void> {
     // Restart idempotence: skip anything already bound on-chain.
     const bound = (await pub.readContract({
@@ -161,10 +174,12 @@ export function startAttester(opts: {
       args: [job.positionId],
     })) as bigint;
     if (bound !== 0n) {
-      // Already proved, by us or by a previous process. Count it: skipping the
-      // work is not the same as the work not having happened.
-      stats.bound += 1;
-      log(job.positionId, `attest: already bound (oid ${bound}), counted`);
+      // Already proved, by us or by a previous process. Count it once:
+      // skipping the work is not the same as the work not having happened,
+      // but seeing it again is not more work having happened either.
+      if (countBound(job.positionId)) {
+        log(job.positionId, `attest: already bound (oid ${bound}), counted`);
+      }
       return;
     }
 
@@ -337,7 +352,7 @@ export function startAttester(opts: {
     });
     await pub.waitForTransactionReceipt({ hash: attHash, timeout: 120_000, pollingInterval: 5_000 });
     stats.landed += 1;
-    stats.bound += 1;
+    countBound(job.positionId);
     stats.lastTx = attHash;
     log(job.positionId, `ATTESTED position -> oid ${job.oid}, tx ${attHash.slice(0, 10)}`);
   }
