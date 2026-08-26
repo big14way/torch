@@ -139,8 +139,21 @@ export type Position = {
   closedAt: bigint;
 };
 
-/** The enclave's public status endpoint. It publishes the executor address,
- * attestation mode, loop health and — importantly for honest UI copy — the
- * execution mode it is actually running in. */
-export const ENCLAVE_STATUS_URL =
-  "https://cc1525a5ca15c4c8ef2668e72bc888f5a0c3239a.dstack-pha-prod9.phala.network";
+/** Flare Confidential Compute: the adapter the vault trusts as its executor,
+ * and the extension id it checks signatures against. The adapter reads Flare's
+ * register of vouched machines on every call, so nothing here pins a key. */
+export const FCC = {
+  adapter: "0x321f606ed6cd64C2478F18053cFAb4ec1B0261de",
+  extensionId: 66154,
+} as const;
+
+/** The trading service's public status page. It publishes which key is
+ * sending transactions, how recently the loop ticked, its gas balance and —
+ * importantly for honest UI copy — the execution mode it is actually running
+ * in, so the site can never claim a live exchange leg while it is off.
+ *
+ * Must match the Railway service name (see agent/DEPLOY.md). It answers 503
+ * when the loop stops ticking, so a stalled service reads as down rather than
+ * quietly green. */
+export const EXECUTOR_STATUS_URL =
+  "https://torch-executor-production.up.railway.app";

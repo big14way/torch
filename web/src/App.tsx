@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useAccount } from "wagmi";
-import { DEPLOY, FDC } from "./lib/config";
+import { DEPLOY, FCC, FDC, EXECUTOR_STATUS_URL } from "./lib/config";
 import { fmtPx, useEffectiveAccount, useMarkPrice, usePositions } from "./lib/hooks";
 import { useRoute, Link } from "./lib/router";
 import Header from "./components/Header";
@@ -23,7 +23,7 @@ export default function App() {
   // Default to a venue-listed market. markets[0] is XRP, which no testnet
   // venue lists — a first-time visitor trading the default would get an
   // FTSO-mark fill with no exchange order id, i.e. the one path that cannot
-  // show the full Flare vault -> TEE -> Hyperliquid route.
+  // show the full vault -> Torch service -> exchange route.
   const [marketKey, setMarketKey] = useState<string>(
     DEPLOY.markets.find((m) => m.key === "BTC")?.key ?? DEPLOY.markets[0]?.key ?? "XRP"
   );
@@ -90,11 +90,12 @@ export default function App() {
               Check it <span className="ph-grad">yourself.</span>
             </h2>
             <p className="ph-sub">
-              Every settlement price is bounded on-chain against Flare's oracle, and must not be
-              worse for you than the oracle itself. The signing key was generated inside attested
-              hardware and can settle trades but never withdraw. Flare's validators can re-prove an
-              exchange fill on-chain after the fact. Here is where you check each of those, and
-              where we say plainly what is not yet proven.
+              Every price your trade settles at is checked on-chain against the price Flare itself
+              publishes, and can never come out worse for you than that. The price you open at is
+              signed inside a sealed machine Flare's validators vouch for, so we can send the
+              transaction but cannot choose the number in it. Afterwards, Flare's validators can go
+              back to the exchange and re-prove the trade really happened. Here is where you check
+              each of those, and where we say plainly what is still not proven.
             </p>
           </div>
           <div className="card verify-card">
@@ -109,61 +110,67 @@ export default function App() {
             <h2>CHECK IT YOURSELF</h2>
             <ul className="verify-links">
               <li>
-                Enclave status (executor key, attestation, loop heartbeat):{" "}
+                Torch's trading service, live: which key is sending transactions, when it last
+                ran, and how much gas it has left.{" "}
+                <a href={EXECUTOR_STATUS_URL} target="_blank" rel="noreferrer">
+                  status page
+                </a>
+              </li>
+              <li>
+                The contract that refuses any entry price without a signature from a sealed
+                machine Flare currently vouches for (extension {FCC.extensionId}):{" "}
                 <a
-                  href="https://cc1525a5ca15c4c8ef2668e72bc888f5a0c3239a.dstack-pha-prod9.phala.network"
+                  href={`https://coston2-explorer.flare.network/address/${FCC.adapter}`}
                   target="_blank"
                   rel="noreferrer"
                 >
-                  live endpoint
+                  {FCC.adapter}
                 </a>
               </li>
-              {FDC.attestTx && (
-                <li>
-                  Every venue-routed fill is re-proved by Flare's validators and bound to its vault
-                  position on-chain — run by the enclave itself, not by us on demand:{" "}
-                  <a
-                    href={`https://coston2-explorer.flare.network/tx/${FDC.attestTx}`}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    attestation tx
-                  </a>
-                </li>
-              )}
+              <li>
+                A real exchange trade, re-proven on-chain by Flare's validators (proven Jul 22 on
+                a dedicated run, not the league loop):{" "}
+                <a
+                  href={`https://coston2-explorer.flare.network/tx/${FDC.attestTx}`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  the receipt
+                </a>
+              </li>
               {FDC.positionAttest && (
                 <li>
-                  Vault position #{FDC.positionAttest.positionId} bound to its real fill (oid{" "}
-                  {FDC.positionAttest.oid}):{" "}
+                  Position #{FDC.positionAttest.positionId} matched on-chain to the real exchange
+                  order behind it (#{FDC.positionAttest.oid}):{" "}
                   <a
                     href={`https://coston2-explorer.flare.network/tx/${FDC.positionAttest.tx}`}
                     target="_blank"
                     rel="noreferrer"
                   >
-                    proof tx
+                    the receipt
                   </a>
                 </li>
               )}
               <li>
-                Margin funded from a bare XRPL wallet, one signature, via Flare Smart Accounts:{" "}
+                Margin funded straight from an XRP Ledger wallet, with one signature:{" "}
                 <a
                   href="https://testnet.xrpl.org/transactions/BE8301336DA71C7B488BDC0C1006051599E439D50FC2F492CB334659766B94F7"
                   target="_blank"
                   rel="noreferrer"
                 >
-                  the XRPL signature
+                  the XRP signature
                 </a>{" "}
-                →{" "}
+                became{" "}
                 <a
                   href="https://coston2-explorer.flare.network/tx/0xbaf5241608039406d307cdb46a6fcd1a55ad42b3fd31608bf077dd12b0298fee"
                   target="_blank"
                   rel="noreferrer"
                 >
-                  one Coston2 tx: mint, approve, deposit
+                  one transaction on Flare that funded the position
                 </a>
               </li>
               <li>
-                TorchVault (source-verified):{" "}
+                The vault that holds your margin, with its source published:{" "}
                 <a
                   href={`https://coston2-explorer.flare.network/address/${DEPLOY.vault}`}
                   target="_blank"
@@ -173,7 +180,7 @@ export default function App() {
                 </a>
               </li>
               <li>
-                FDC consumer (source-verified):{" "}
+                The contract that records the validators' receipts, source published:{" "}
                 <a
                   href={`https://coston2-explorer.flare.network/address/${FDC.fdcConsumer}`}
                   target="_blank"
@@ -227,12 +234,12 @@ export default function App() {
       )}
 
       <div className="footer">
-        <span>Torch is testnet software. Not audited. Not investment advice.</span>
+        <span>Torch runs on a test network with practice funds. Not audited. Not investment advice.</span>
         <a href="https://t.me/+4bWN0yFjIUc4ZGNk" target="_blank" rel="noreferrer">Telegram community</a>
         <a href="https://x.com/torchxrponflare" target="_blank" rel="noreferrer">X</a>
         <a href="https://dev.flare.network" target="_blank" rel="noreferrer">Flare docs</a>
         <a href="https://hyperliquid.gitbook.io/hyperliquid-docs" target="_blank" rel="noreferrer">Hyperliquid docs</a>
-        <a href="https://faucet.flare.network" target="_blank" rel="noreferrer">Coston2 faucet</a>
+        <a href="https://faucet.flare.network" target="_blank" rel="noreferrer">Free test funds</a>
       </div>
     </div>
   );

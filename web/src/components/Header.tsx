@@ -135,7 +135,7 @@ export default function Header() {
         </div>
         <div className="stat">
           <span className="label">Network</span>
-          <span className="value">{DEPLOY.mode === "local" ? "Localhost" : "Coston2"}</span>
+          <span className="value">{DEPLOY.mode === "local" ? "Localhost" : "Flare testnet"}</span>
         </div>
       </div>
 

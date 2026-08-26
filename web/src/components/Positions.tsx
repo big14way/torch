@@ -204,7 +204,7 @@ export default function Positions({ positions }: { positions: Position[] | undef
           : msg.includes("TooSoon")
             ? fn === "selfClose"
               ? "Self-close hasn't unlocked yet: the full delay since your close request must elapse in chain time - your clock may be slightly ahead."
-              : "The executor already accepted this fill, so cancelling is locked until the accept timeout elapses."
+              : "Torch's service already took this order on, so cancelling stays locked until its window runs out."
             : msg.includes("NotPositionOwner")
               ? "Only the position's owner can do that (watch mode is read-only)."
               : msg.includes("BadStatus")
@@ -260,11 +260,11 @@ export default function Positions({ positions }: { positions: Position[] | undef
                       style={{ marginLeft: 5, fontSize: 10, opacity: 0.65 }}
                       title={
                         p.hlOid > 0n
-                          ? `Venue-routed: real Hyperliquid order #${p.hlOid} — FDC-attestable`
-                          : "Filled at the FTSO oracle mark (no venue lists this market on testnet) — nothing to attest"
+                          ? `Filled on the exchange, order #${p.hlOid}. Flare's validators can re-check this one.`
+                          : "Filled at the price Flare publishes, because no test exchange lists this market. Nothing to re-check."
                       }
                     >
-                      {p.hlOid > 0n ? "HL" : "FTSO"}
+                      {p.hlOid > 0n ? "exchange" : "feed"}
                     </span>
                   )}
                 </td>
@@ -436,7 +436,7 @@ export default function Positions({ positions }: { positions: Position[] | undef
                           disabled={isPending || !isConnected || locked}
                           title={
                             locked
-                              ? "The executor accepted this fill and may already be hedging it; cancel unlocks when the accept window lapses."
+                              ? "Torch's service took this order on and may already have placed it. Cancel unlocks when its window runs out."
                               : "Withdraw the request before it fills. Free."
                           }
                           onClick={() => act("cancelRequest", p.id)}
@@ -469,13 +469,13 @@ export default function Positions({ positions }: { positions: Position[] | undef
                             disabled={isPending || !isConnected || !ready}
                             title={
                               ready
-                                ? "Settle yourself at the live FTSO oracle price - no executor needed."
-                                : "If the executor doesn't answer your close, this unlocks and settles you at the oracle price."
+                                ? "Settle it yourself at the price Flare publishes right now. Nobody from Torch is involved."
+                                : "If Torch's service does not answer your close, this unlocks and settles you at the price Flare publishes."
                             }
                             onClick={() => act("selfClose", p.id)}
                           >
                             {ready
-                              ? "Self-close at oracle"
+                              ? "Close it yourself"
                               : remaining !== null && remaining > 0
                                 ? `Self-close in ${fmtDur(remaining)}`
                                 : "Self-close"}

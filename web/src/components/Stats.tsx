@@ -1,17 +1,17 @@
 import { useGlobalStats, fmtUsd6, fmtFxrp } from "../lib/hooks";
 
-/** Live protocol numbers, read straight from the vault on Coston2. */
+/** Live numbers, read straight from the vault on-chain. */
 export default function Stats() {
   const { insurance, openInterest, volume, openCount } = useGlobalStats();
   return (
     <div className="protostats" aria-live="polite">
       <div className="stat">
         <b>${fmtUsd6(volume)}</b>
-        <span>notional routed</span>
+        <span>traded</span>
       </div>
       <div className="stat">
         <b>${fmtUsd6(openInterest)}</b>
-        <span>open interest</span>
+        <span>open right now</span>
       </div>
       <div className="stat">
         <b>{fmtFxrp(insurance)}</b>

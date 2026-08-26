@@ -104,8 +104,8 @@ export default function Ticket({ marketKey, mark }: { marketKey: string; mark: b
 
       {needsDeposit && (
         <div className="deposit-hint">
-          <b>Deposit margin to start.</b> Positions trade on FXRP you've deposited into the vault,
-          not your wallet balance. Need FXRP?{" "}
+          <b>Deposit margin to start.</b> Positions trade on the FXRP you have put into the vault,
+          not the balance sitting in your wallet. Need some?{" "}
           <a href="https://faucet.flare.network" target="_blank" rel="noreferrer">
             Claim C2FLR + FTestXRP
           </a>{" "}
@@ -180,7 +180,7 @@ export default function Ticket({ marketKey, mark }: { marketKey: string; mark: b
           <b>${est.marginUsd.toLocaleString("en-US", { maximumFractionDigits: 2 })}</b>
         </div>
         <div className="row">
-          <span>Est. liq price</span>
+          <span>Liquidation price (est.)</span>
           <b>{est.liqPx > 0 ? `$${est.liqPx.toLocaleString("en-US", { maximumFractionDigits: 4 })}` : "..."}</b>
         </div>
         <div className="row">
@@ -191,14 +191,14 @@ export default function Ticket({ marketKey, mark }: { marketKey: string; mark: b
           <span>Route</span>
           <b>
             {routesToExchange && marketKey !== "XRP"
-              ? "Flare vault, TEE, Hyperliquid"
+              ? "Vault, Torch service, Hyperliquid"
               : routesToExchange
-                ? "Flare vault, TEE, FTSO mark (XRP not venue-listed)"
-                : "Flare vault, TEE, FTSO mark"}
+                ? "Vault, Torch service, Flare price feed (XRP is not listed on the exchange)"
+                : "Vault, Torch service, Flare price feed"}
           </b>
         </div>
         {capLikely && (
-          <div className="row" style={{ color: "#ffc24b" }} title="Winners are paid from the on-chain insurance fund and payouts are capped at its balance — stated on /verify. At this size a normal favorable move could out-win the fund.">
+          <div className="row" style={{ color: "#ffc24b" }} title="Wins are paid from an insurance fund you can see on-chain, and a win bigger than its balance pays out the balance. At this size a normal move in your favour could out-win the fund.">
             <span>Payout cap</span>
             <b>
               wins above ~${insuranceUsd!.toLocaleString("en-US", { maximumFractionDigits: 0 })}{" "}
@@ -234,8 +234,8 @@ export default function Ticket({ marketKey, mark }: { marketKey: string; mark: b
       {sent && (
         <div className="notice">
           {routesToExchange
-            ? "Request sent. The TEE agent is filling it on the exchange. Watch the route trace."
-            : "Request sent. The TEE agent is filling it at the FTSO mark. Watch the route trace."}
+            ? "Order sent. Torch's service is filling it on the exchange. Watch the route below."
+            : "Order sent. Torch's service is filling it at Flare's published price. Watch the route below."}
         </div>
       )}
       {error && <div className="notice error">{error}</div>}

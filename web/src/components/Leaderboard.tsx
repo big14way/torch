@@ -53,7 +53,7 @@ export default function Leaderboard() {
         <span className="league-sub">
           {preSeason
             ? `Warm-up · all-time standings shown until ${LEAGUE_SEASON} opens ${LEAGUE_DATES.split(" – ")[0]}. Trade now to practice.`
-            : `Paper Perps League ${LEAGUE_SEASON} · Coston2 testnet · ranked by realized PnL (losses capped at posted margin), liquidations held against you`}
+            : `Paper Perps League ${LEAGUE_SEASON} · Flare test network · ranked by profit taken (losses count only what you put up), positions closed out for low margin count against you`}
         </span>
         <span className="league-rules">
           House &amp; team wallets appear on the board (they keep the plumbing honest) but can't
