@@ -124,6 +124,7 @@ export default function Header() {
         <Link to="/trade">Trade</Link>
         <Link to="/league">League</Link>
         <Link to="/verify">Verify</Link>
+        <Link to="/waves">Make Waves</Link>
       </nav>
 
       <div className="spacer" />

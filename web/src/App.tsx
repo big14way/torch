@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { useAccount } from "wagmi";
 import { DEPLOY, FCC, FDC, EXECUTOR_STATUS_URL } from "./lib/config";
 import { fmtPx, useEffectiveAccount, useMarkPrice, usePositions } from "./lib/hooks";
@@ -17,6 +17,12 @@ import Honesty from "./components/Honesty";
 import Landing from "./components/Landing";
 import FeedbackNudge from "./components/FeedbackNudge";
 import MarketStrip from "./components/MarketStrip";
+
+// The XRPL module is the app's only lazy chunk, and it must stay that way:
+// xrpl-connect plus xrpl.js are large, and /trade must not pay for them.
+// Never import anything under lib/waves or components/waves eagerly from here
+// or from Header, or the chunk collapses back into the main bundle.
+const WavesPage = lazy(() => import("./components/waves/WavesPage"));
 
 export default function App() {
   const { path, navigate } = useRoute();
@@ -52,6 +58,8 @@ export default function App() {
       document.title = "League · Torch";
     } else if (path === "/verify") {
       document.title = "Verify · Torch";
+    } else if (path === "/waves") {
+      document.title = "Make Waves · Torch";
     } else {
       document.title = "Torch | XRP-margined perps on Flare";
     }
@@ -61,7 +69,17 @@ export default function App() {
     <div className={path === "/trade" ? "app app-terminal" : "app"}>
       <Header />
 
-      {path === "/league" ? (
+      {path === "/waves" ? (
+        <Suspense
+          fallback={
+            <main className="page-narrow">
+              <div className="card">Loading the XRP Ledger tools...</div>
+            </main>
+          }
+        >
+          <WavesPage />
+        </Suspense>
+      ) : path === "/league" ? (
         <main className="page-narrow">
           <div className="pagehero">
             <div className="ph-eyebrow">Paper Perps League</div>
