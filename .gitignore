@@ -44,3 +44,6 @@ thumbnail.html
 thumbnail.png
 GRANT_SUBMISSION.md
 BUIDL_SUBMISSION.md
+
+# Per-host runtime secrets (Railway, VPS): never committed
+.env.*.local

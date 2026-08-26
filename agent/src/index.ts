@@ -166,13 +166,6 @@ async function main() {
       .listen(STATUS_PORT, () => console.log(`  status     serving on :${STATUS_PORT}`));
   }
 
-  if (account.address.toLowerCase() !== deployments.executor.toLowerCase()) {
-    console.warn(
-      `  WARNING executor key (${account.address}) != vault executor (${deployments.executor}).\n` +
-        `  Fills will revert. Fix EXECUTOR_PRIVATE_KEY or redeploy.`
-    );
-  }
-
   const vault = { address: deployments.vault as Address, abi: vaultAbi } as const;
 
   // The FCC adapter. Deploying this agent is safe BEFORE the vault is
@@ -224,6 +217,31 @@ async function main() {
   /** Whichever contract the vault currently takes orders from. */
   async function relay() {
     return (await attestedMode()) ? adapter! : vault;
+  }
+
+  // Is this key actually allowed to relay? Ask the chain rather than the
+  // generated deployments file: once the vault started routing through the
+  // adapter the authority that matters became `adapter.agent()`, and
+  // `deployments.executor` has been stale ever since. Getting it wrong is
+  // silent — every relayed call reverts while the loop still looks healthy —
+  // so state it at boot, with the command that fixes it.
+  try {
+    const onAdapter = await attestedMode();
+    const authority = onAdapter
+      ? ((await pub.readContract({ ...adapter!, functionName: "agent" })) as Address)
+      : ((await pub.readContract({ ...vault, functionName: "executor" })) as Address);
+    const label = onAdapter ? "adapter.agent" : "vault.executor";
+    if (authority.toLowerCase() !== account.address.toLowerCase()) {
+      console.warn(
+        `  WARNING this key (${account.address}) is not ${label} (${authority}).\n` +
+          `  Every relayed call will revert. Authorize it with:\n` +
+          `    AGENT_NEW=${account.address} npm run set:agent -w contracts`
+      );
+    } else {
+      console.log(`  authority  ${label} = ${account.address} (ok)`);
+    }
+  } catch (e) {
+    console.warn(`  WARNING could not read the relay authority: ${(e as Error).message}`);
   }
 
   const markKey = (m: `0x${string}`) => hexToString(m, { size: 32 });
