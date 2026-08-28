@@ -124,6 +124,7 @@ export default function Header() {
         <Link to="/trade">Trade</Link>
         <Link to="/league">League</Link>
         <Link to="/verify">Verify</Link>
+        <Link to="/waves">Make Waves</Link>
       </nav>
 
       <div className="spacer" />
@@ -135,7 +136,7 @@ export default function Header() {
         </div>
         <div className="stat">
           <span className="label">Network</span>
-          <span className="value">{DEPLOY.mode === "local" ? "Localhost" : "Coston2"}</span>
+          <span className="value">{DEPLOY.mode === "local" ? "Localhost" : "Flare testnet"}</span>
         </div>
       </div>
 

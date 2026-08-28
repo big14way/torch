@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "prebuild": "node scripts/vendor-xrpl-connect.mjs"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.51.0",
@@ -14,7 +15,9 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "viem": "^2.21.0",
-    "wagmi": "^2.12.0"
+    "wagmi": "^2.12.0",
+    "xrpl": "^4.6.0",
+    "xrpl-connect": "^1.0.0-rc.0"
   },
   "devDependencies": {
     "@types/react": "^18.3.3",

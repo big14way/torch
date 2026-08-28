@@ -1,0 +1,7 @@
+# Never upload local secrets into the Railway build context.
+# The Dockerfile does not COPY these, but keep them out of the upload entirely.
+.env
+.env.*
+!.env.railway.example
+node_modules
+*.log

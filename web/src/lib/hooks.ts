@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useAccount, useReadContract, useReadContracts } from "wagmi";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { hexToString } from "viem";
-import { VAULT, DEPLOY, ENCLAVE_STATUS_URL, type Position } from "./config";
+import { VAULT, DEPLOY, EXECUTOR_STATUS_URL, type Position } from "./config";
 import { useWatch } from "./watch";
 
 /** The address the UI is looking at: the connected wallet when there is one,
@@ -39,7 +39,7 @@ export function useExecutorStatus(): { status: ExecutorStatus | undefined; route
   useEffect(() => {
     let dead = false;
     const load = () =>
-      fetch(ENCLAVE_STATUS_URL)
+      fetch(EXECUTOR_STATUS_URL)
         .then((r) => (r.ok ? r.json() : undefined))
         .then((j) => {
           if (!dead) setStatus(j as ExecutorStatus | undefined);

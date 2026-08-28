@@ -675,3 +675,102 @@ html, body { overflow-x: hidden; max-width: 100%; }
   .ctl { min-height: 32px; padding: 6px 10px; }
   .table td button { min-height: 36px; }
 }
+
+/* ------------------------------------------------------------------ /waves
+   Make Waves: the XRP Ledger page. Reuses .card, .btn and .ld-feat so it reads
+   as part of the site rather than a bolted-on landing page. */
+
+.waves-counter .wc-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.waves-counter .wc-head b {
+  font-size: 40px;
+  line-height: 1;
+  letter-spacing: -1px;
+}
+.waves-counter .wc-head span {
+  flex: 1 1 240px;
+  opacity: 0.8;
+  font-size: 13px;
+}
+.wc-bar {
+  margin: 14px 0 10px;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+.wc-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: linear-gradient(90deg, #ff8a3d, #ffc24b);
+  transition: width 600ms ease;
+}
+.wc-note {
+  font-size: 12px;
+  opacity: 0.65;
+  line-height: 1.5;
+}
+
+.waves-reveal p { font-size: 14px; opacity: 0.85; }
+.waves-reveal-out {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+}
+.waves-reveal-out .row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 0;
+  font-size: 13px;
+  flex-wrap: wrap;
+}
+.waves-reveal-out .row b { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.waves-reveal-note { margin: 10px 0 0; font-size: 12px; opacity: 0.7; }
+
+.waves-anti {
+  margin: 16px 0 0;
+  padding: 12px 14px;
+  border-left: 3px solid rgba(255, 194, 75, 0.6);
+  background: rgba(255, 194, 75, 0.06);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.waves-join p { font-size: 14px; line-height: 1.6; opacity: 0.9; }
+.waves-join .btn.wide { width: 100%; margin-top: 8px; }
+.waves-join .btn.ghost.sm { margin-top: 10px; }
+.waves-wallets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 10px;
+}
+.waves-wallets .btn { flex: 1 1 150px; }
+.waves-wallets .btn a { text-decoration: underline; opacity: 0.8; }
+
+.waves-wall {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.waves-wall a {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  text-decoration: none;
+}
+.waves-wall a:hover { border-color: rgba(255, 138, 61, 0.6); }
+.waves-wall .ww-n { opacity: 0.5; font-size: 11px; }

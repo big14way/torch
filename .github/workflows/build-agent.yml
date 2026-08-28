@@ -1,8 +1,9 @@
 name: Build executor image
 
 # Builds the Torch executor container and pushes it to GitHub Container Registry
-# (ghcr.io/<owner>/torch-executor:latest) so a TEE host (Phala Cloud / Confidential
-# Space) can pull it. No local Docker needed.
+# (ghcr.io/<owner>/torch-executor:latest). Railway builds agent/Dockerfile
+# itself, so this is a spare pullable image and a check that the Dockerfile
+# still builds. No local Docker needed.
 on:
   push:
     branches: [main]
